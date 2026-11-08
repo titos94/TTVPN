@@ -4,6 +4,7 @@ import json
 import httpx
 
 from assistant_settings import PROVIDER_URLS, validate_model
+from monitor_export import ISSUE_CODES
 
 _STATES = frozenset(('ok', 'degraded', 'down', 'unknown'))
 _COMPONENTS = frozenset(('panel', 'proxy', 'telegram', 'vpn_node'))
@@ -12,7 +13,11 @@ _COMPONENTS = frozenset(('panel', 'proxy', 'telegram', 'vpn_node'))
 def safe_snapshot(report):
     if not isinstance(report, dict) or report.get('monitor') != 'isolated':
         raise ValueError('Монитор недоступен')
-    result = {'components': {}, 'health': {}}
+    status = report.get('status')
+    result = {'status': status if status in ('ok', 'attention', 'unknown') else 'unknown',
+              'components': {}, 'health': {}}
+    issues = report.get('issues')
+    result['issues'] = [item for item in issues if isinstance(item, str) and item in ISSUE_CODES][:16] if isinstance(issues, list) else []
     for item in report.get('components', []):
         if not isinstance(item, dict):
             continue
@@ -23,15 +28,17 @@ def safe_snapshot(report):
         if component == 'vpn_node':
             for key in ('ok', 'degraded', 'down', 'unknown'):
                 value = item.get(key)
-                if type(value) is int and 0 <= value <= 10000:
+                if type(value) is int and 0 <= value <= 1000:
                     entry[key] = value
         result['components'][component] = entry
     health = report.get('health')
     if isinstance(health, dict):
-        for key, maximum in (('disk_percent', 100), ('load_average_1m', 10000)):
+        for key, maximum in (('disk_free_percent', 100), ('load_average_1m', 10000)):
             value = health.get(key)
             if type(value) in (int, float) and 0 <= value <= maximum:
                 result['health'][key] = value
+        if type(health.get('telegram_enabled')) is bool:
+            result['health']['telegram_enabled'] = health['telegram_enabled']
     if not result['components']:
         raise ValueError('Нет достоверных данных монитора')
     return result

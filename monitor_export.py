@@ -237,7 +237,7 @@ async def fetch_status() -> dict | None:
     if not url or not token:
         return None
     try:
-        async with httpx.AsyncClient(timeout=4, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=4, follow_redirects=False, trust_env=False) as client:
             response = await client.get(url + '/status',
                                         headers={'X-Monitor-Token': token})
             response.raise_for_status()

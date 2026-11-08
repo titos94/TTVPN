@@ -2999,7 +2999,7 @@ async def isolated_monitor_push_loop():
     url, token = monitor_export.monitor_config()
     if not url or not token:
         return
-    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False) as client:
         while True:
             try:
                 data = load_data()
