@@ -35,7 +35,6 @@ The use of traffic obfuscation tools may violate the laws of your country. Only 
 - **Educational training in cybersecurity**
 
 > **Nothing in this project constitutes an incitement to violate any applicable laws.**
-![Servers Dashboard](https://raw.githubusercontent.com/PRVTPRO/Amnezia-Web-Panel/refs/heads/main/screen/panel1.png)
 
 
 ### Additional Sections
@@ -45,7 +44,6 @@ The use of traffic obfuscation tools may violate the laws of your country. Only 
 <br>
 User management interface with permissions and access controls:
 
-![Users Management](https://github.com/PRVTPRO/Amnezia-Web-Panel/blob/main/screen/panel1-2.png)
 </details>
 
 <details>
@@ -53,7 +51,6 @@ User management interface with permissions and access controls:
 <br>
 Configuration panel for system parameters and preferences:
 
-![Settings Panel](https://github.com/PRVTPRO/Amnezia-Web-Panel/blob/main/screen/panel1-3.png)
 </details>
 
 ## 🚀 Key Features
