@@ -39,6 +39,7 @@ def test_rejects_obvious_secrets_and_invalid_input(message):
 @pytest.mark.parametrize('provider,model,url', [
     ('openai', 'gpt-4.1-mini', 'https://api.openai.com/v1/chat/completions'),
     ('routerai', 'deepseek/deepseek-v4-flash', 'https://routerai.ru/api/v1/chat/completions'),
+    ('groq', 'llama-3.3-70b-versatile', 'https://api.groq.com/openai/v1/chat/completions'),
 ])
 def test_external_call_contains_only_question_and_static_instructions(monkeypatch, provider, model, url):
     captured = {}

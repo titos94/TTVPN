@@ -26,7 +26,8 @@ MIN_KEY_LENGTH = 20
 MAX_KEY_LENGTH = 512
 
 _MODEL_PATTERN = re.compile(r'^[A-Za-z0-9._:-]+(?:/[A-Za-z0-9._:-]+)?$')
-PROVIDER_URLS = {'openai': 'https://api.openai.com/v1', 'routerai': 'https://routerai.ru/api/v1'}
+PROVIDER_URLS = {'openai': 'https://api.openai.com/v1', 'routerai': 'https://routerai.ru/api/v1',
+                 'groq': 'https://api.groq.com/openai/v1'}
 _PRINTABLE_ASCII = re.compile(r'^[\x21-\x7e]+$')
 
 # Неподвижная соль/назначение: ключ должен выводиться одинаково при каждом

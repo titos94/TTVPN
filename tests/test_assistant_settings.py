@@ -203,6 +203,19 @@ def test_save_empty_key_keeps_existing(monkeypatch):
     assert stored['model'] == assistant_settings.DEFAULT_MODEL
 
 
+def test_changing_provider_requires_new_key(monkeypatch):
+    _as_admin(monkeypatch)
+    token = assistant_settings.encrypt_api_key(OLD_KEY, SECRET)
+    data = _state(monkeypatch, {'settings': {'assistant': {
+        'enabled': True, 'provider': 'routerai', 'api_key_encrypted': token}}})
+    monkeypatch.setenv('SECRET_KEY', SECRET)
+    response = asyncio.run(panel.api_assistant_settings_save(
+        _request({'enabled': True, 'provider': 'groq', 'model': 'llama-3.3-70b-versatile', 'api_key': ''})))
+    assert response.status_code == 400
+    assert _stored(data)['provider'] == 'routerai'
+    assert _stored(data)['api_key_encrypted'] == token
+
+
 def test_save_keeps_unrelated_settings(monkeypatch):
     _as_admin(monkeypatch)
     data = _state(monkeypatch, {'settings': {'ssl': {'panel_port': 443},

@@ -969,13 +969,14 @@
                             <select class="form-input" id="assistant_provider" {% if assistant.env_override %}disabled{% endif %}>
                                 <option value="openai" {% if assistant.provider == 'openai' %}selected{% endif %}>OpenAI — https://api.openai.com/v1</option>
                                 <option value="routerai" {% if assistant.provider == 'routerai' %}selected{% endif %}>RouterAI — https://routerai.ru/api/v1</option>
+                                <option value="groq" {% if assistant.provider == 'groq' %}selected{% endif %}>Groq — https://api.groq.com/openai/v1</option>
                             </select>
                             <p class="form-hint">Адрес выбранного провайдера задан заранее для защиты ключа.</p>
                         </div>
                         <div class="tt-field">
                             <label class="form-label" for="assistant_api_key">Ключ API</label>
                             <input class="form-input" type="password" id="assistant_api_key" autocomplete="off" spellcheck="false" placeholder="{% if assistant.key_configured %}сохранён ключ ····{{ assistant.key_last4 }}{% else %}вставьте ключ API{% endif %}">
-                            <p class="form-hint">Пустое поле сохраняет текущий ключ.</p>
+                            <p class="form-hint">Пустое поле сохраняет текущий ключ. При смене провайдера введите его новый ключ.</p>
                         </div>
                         <div class="tt-field">
                             <label class="form-label" for="assistant_model">Модель</label>

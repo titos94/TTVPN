@@ -9089,6 +9089,9 @@ async def api_assistant_settings_save(request: Request):
     async with DATA_LOCK:
         data = load_data()
         current = _assistant_settings(data)
+        if (current.get('api_key_encrypted') and
+                current.get('provider', assistant_settings.PROVIDER) != provider and not api_key):
+            return JSONResponse({'error': 'При смене провайдера введите новый ключ API'}, status_code=400)
         updated = {
             'enabled': enabled,
             'provider': provider,
