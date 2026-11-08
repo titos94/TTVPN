@@ -36,14 +36,21 @@ def test_rejects_obvious_secrets_and_invalid_input(message):
         validate_message(message)
 
 
-def test_external_call_contains_only_question_and_static_instructions(monkeypatch):
+@pytest.mark.parametrize('provider,model,url', [
+    ('openai', 'gpt-4.1-mini', 'https://api.openai.com/v1/chat/completions'),
+    ('routerai', 'deepseek/deepseek-v4-flash', 'https://routerai.ru/api/v1/chat/completions'),
+])
+def test_external_call_contains_only_question_and_static_instructions(monkeypatch, provider, model, url):
     captured = {}
     monkeypatch.setenv('TTVPN_ASSISTANT_API_KEY', 'test-key')
     monkeypatch.setenv('TTVPN_ASSISTANT_ENABLED', '1')
+    monkeypatch.setenv('TTVPN_ASSISTANT_PROVIDER', provider)
+    monkeypatch.setenv('TTVPN_ASSISTANT_MODEL', model)
 
     class FakeClient:
         def __init__(self, **kwargs):
             assert kwargs['follow_redirects'] is False
+            assert kwargs['trust_env'] is False
 
         async def __aenter__(self):
             return self
@@ -58,7 +65,8 @@ def test_external_call_contains_only_question_and_static_instructions(monkeypatc
 
     monkeypatch.setattr('ttvpn_assistant.httpx.AsyncClient', FakeClient)
     assert asyncio.run(answer_customer('Как подключиться?')) == 'Ответ'
-    assert captured['url'] == 'https://api.openai.com/v1/chat/completions'
+    assert captured['url'] == url
+    assert captured['payload']['model'] == model
     assert captured['payload']['messages'][-1] == {'role': 'user', 'content': 'Как подключиться?'}
     assert 'tools' not in captured['payload']
 

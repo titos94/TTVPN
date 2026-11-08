@@ -943,8 +943,8 @@
                 <div class="tt-section__tools">
                     {% if assistant.env_override %}
                     <span class="badge badge-info">ключ из окружения</span>
-                    {% elif assistant.key_configured and assistant.enabled %}
-                    <span class="badge badge-success">подключён</span>
+                    {% elif assistant.key_configured and assistant.enabled and not assistant.key_unreadable %}
+                    <span class="badge badge-success">включён, соединение не проверено</span>
                     {% elif assistant.key_configured %}
                     <span class="badge badge-danger">выключен</span>
                     {% else %}
@@ -954,7 +954,7 @@
             </header>
             <div class="tt-section__body">
                 {% if assistant.env_override %}
-                <p class="tt-alert tt-alert--warning">Ключ задан переменной окружения на сервере и имеет приоритет. Ключ, сохранённый здесь, не используется.</p>
+                <p class="tt-alert tt-alert--warning">Настройки ИИ заданы переменными окружения сервера. Для изменения провайдера, модели или включения измените переменные окружения; значения этой формы не применяются.</p>
                 {% endif %}
                 {% if assistant.key_unreadable %}
                 <p class="tt-alert tt-alert--warning">Сохранённый ключ не удаётся расшифровать: вероятно, изменился секретный ключ панели. Введите ключ API заново.</p>
@@ -965,18 +965,26 @@
                 <form onsubmit="return saveAssistantSettings(event)">
                     <div class="tt-form-grid">
                         <div class="tt-field">
+                            <label class="form-label" for="assistant_provider">Провайдер</label>
+                            <select class="form-input" id="assistant_provider" {% if assistant.env_override %}disabled{% endif %}>
+                                <option value="openai" {% if assistant.provider == 'openai' %}selected{% endif %}>OpenAI — https://api.openai.com/v1</option>
+                                <option value="routerai" {% if assistant.provider == 'routerai' %}selected{% endif %}>RouterAI — https://routerai.ru/api/v1</option>
+                            </select>
+                            <p class="form-hint">Адрес выбранного провайдера задан заранее для защиты ключа.</p>
+                        </div>
+                        <div class="tt-field">
                             <label class="form-label" for="assistant_api_key">Ключ API</label>
                             <input class="form-input" type="password" id="assistant_api_key" autocomplete="off" spellcheck="false" placeholder="{% if assistant.key_configured %}сохранён ключ ····{{ assistant.key_last4 }}{% else %}вставьте ключ API{% endif %}">
                             <p class="form-hint">Пустое поле сохраняет текущий ключ.</p>
                         </div>
                         <div class="tt-field">
                             <label class="form-label" for="assistant_model">Модель</label>
-                            <input class="form-input" type="text" id="assistant_model" value="{{ assistant.model }}" placeholder="{{ assistant.default_model }}" autocomplete="off" spellcheck="false">
-                            <p class="form-hint">Если не указана, используется {{ assistant.default_model }}.</p>
+                            <input class="form-input" type="text" id="assistant_model" value="{{ assistant.model }}" placeholder="{{ assistant.default_model }}" autocomplete="off" spellcheck="false" {% if assistant.env_override %}disabled{% endif %}>
+                            <p class="form-hint">Укажите идентификатор модели провайдера, например deepseek/deepseek-v4-flash для RouterAI. Сначала сохраните настройки, затем проверьте подключение.</p>
                         </div>
                     </div>
                     <label class="tt-check">
-                        <input type="checkbox" id="assistant_enabled" {% if assistant.enabled %}checked{% endif %}>
+                        <input type="checkbox" id="assistant_enabled" {% if assistant.enabled %}checked{% endif %} {% if assistant.env_override %}disabled{% endif %}>
                         <span class="tt-check__label">Помощник включён</span>
                     </label>
                     <div class="brand-actions">
@@ -1851,6 +1859,7 @@
         const keyInput = document.getElementById('assistant_api_key');
         const payload = {
             enabled: document.getElementById('assistant_enabled').checked,
+            provider: document.getElementById('assistant_provider').value,
             model: document.getElementById('assistant_model').value,
             api_key: keyInput ? keyInput.value : ''
         };

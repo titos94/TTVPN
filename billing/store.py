@@ -339,6 +339,27 @@ def init_db(db_path: str) -> None:
         _migrate(conn)
 
 
+def reserve_assistant_request(db_path: str, user_id: str, *, day: str,
+                              user_limit: int = 20, global_limit: int = 200) -> bool:
+    """Reserve one paid request atomically, including unsuccessful attempts.
+
+    This is a request ceiling, not a monetary budget; the provider must also
+    enforce a spending limit. No message content is stored here.
+    """
+    with connect(db_path) as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        conn.execute('CREATE TABLE IF NOT EXISTS assistant_daily_usage '
+                     '(day TEXT NOT NULL, user_id TEXT NOT NULL, requests INTEGER NOT NULL, '
+                     'PRIMARY KEY (day, user_id))')
+        total = conn.execute('SELECT COALESCE(SUM(requests), 0) FROM assistant_daily_usage WHERE day = ?', (day,)).fetchone()[0]
+        row = conn.execute('SELECT requests FROM assistant_daily_usage WHERE day = ? AND user_id = ?', (day, user_id)).fetchone()
+        if total >= global_limit or (row and row[0] >= user_limit):
+            return False
+        conn.execute('INSERT INTO assistant_daily_usage (day, user_id, requests) VALUES (?, ?, 1) '
+                     'ON CONFLICT(day, user_id) DO UPDATE SET requests = requests + 1', (day, user_id))
+        return True
+
+
 # -------------------------------------------------- payment applied state
 #
 # A paid order must be granted exactly once even when two webhook deliveries

@@ -8973,9 +8973,10 @@ def _assistant_resolve():
     """Единая точка чтения ключа: env главнее сохранённых настроек."""
     env_key = os.environ.get('TTVPN_ASSISTANT_API_KEY', '').strip()
     if env_key:
-        return {'enabled': True, 'api_key': env_key,
+        return {'enabled': os.environ.get('TTVPN_ASSISTANT_ENABLED', '').strip().lower() in ('1', 'true', 'yes', 'on'), 'api_key': env_key,
                 'model': (os.environ.get('TTVPN_ASSISTANT_MODEL', '').strip()
                           or assistant_settings.DEFAULT_MODEL),
+                'provider': os.environ.get('TTVPN_ASSISTANT_PROVIDER', 'openai'),
                 'source': 'env'}
     stored = _assistant_settings()
     secret = _assistant_secret()
@@ -8984,6 +8985,7 @@ def _assistant_resolve():
         'enabled': bool(stored.get('enabled')),
         'api_key': key,
         'model': stored.get('model') or assistant_settings.DEFAULT_MODEL,
+        'provider': stored.get('provider', assistant_settings.PROVIDER),
         'source': 'settings' if key else 'none',
     }
 
@@ -8996,6 +8998,10 @@ def _assistant_public():
     if env_override:
         view['key_configured'] = True
         view['key_last4'] = ''
+        resolved = _assistant_resolve()
+        view['enabled'] = resolved['enabled']
+        view['provider'] = resolved['provider']
+        view['model'] = resolved['model']
     view['key_unreadable'] = bool(
         stored.get('api_key_encrypted') and not env_override
         and not _assistant_resolve()['api_key'])
@@ -9036,6 +9042,9 @@ async def api_assistant_settings_save(request: Request):
         if not isinstance(enabled, bool):
             raise ValueError('Поле «включён» должно быть логическим')
         model = assistant_settings.validate_model(body.get('model'))
+        provider = body.get('provider', assistant_settings.PROVIDER)
+        if provider not in assistant_settings.PROVIDER_URLS:
+            raise ValueError('Недопустимый провайдер')
         raw_key = body.get('api_key')
         api_key = '' if raw_key is None else str(raw_key).strip()
         if api_key:
@@ -9048,7 +9057,7 @@ async def api_assistant_settings_save(request: Request):
         current = _assistant_settings(data)
         updated = {
             'enabled': enabled,
-            'provider': assistant_settings.PROVIDER,
+            'provider': provider,
             'model': model,
             'api_key_encrypted': current.get('api_key_encrypted'),
             'key_last4': current.get('key_last4'),
@@ -9082,7 +9091,7 @@ async def api_assistant_settings_clear_key(request: Request):
     return JSONResponse(_assistant_public(), headers={'Cache-Control': 'no-store'})
 
 
-def _assistant_probe_key(api_key, model):
+def _assistant_probe_key(api_key, model, provider='openai'):
     """Дешёвый запрос к провайдеру: проверяет ключ, не отправляя данных клиента."""
     import httpx
     try:
@@ -9090,7 +9099,7 @@ def _assistant_probe_key(api_key, model):
         # trust_env=False: прокси из окружения панели не должен получать ключ.
         with httpx.Client(timeout=timeout, follow_redirects=False,
                           trust_env=False) as client:
-            response = client.get('https://api.openai.com/v1/models',
+            response = client.get(assistant_settings.PROVIDER_URLS[provider] + '/models',
                                  headers={'Authorization': f'Bearer {api_key}'})
     except Exception:  # noqa: BLE001 - сеть не должна ронять запрос
         return {'ok': False, 'message': 'Провайдер недоступен'}
@@ -9131,7 +9140,8 @@ async def api_assistant_settings_test(request: Request):
         if not resolved['api_key']:
             return JSONResponse({'ok': False, 'message': 'Ключ не задан'})
         result = await asyncio.to_thread(_assistant_probe_key,
-                                        resolved['api_key'], resolved['model'])
+                                        resolved['api_key'], resolved['model'],
+                                        resolved.get('provider', 'openai'))
         return JSONResponse(result, headers={'Cache-Control': 'no-store'})
     finally:
         # Метка остаётся: повтор до истечения TTL ограничен, но зависший
@@ -9597,9 +9607,7 @@ def settings_page(request: Request):
     backup_csrf = request.session.setdefault('backup_csrf', secrets.token_urlsafe(32)) if user['role'] == 'admin' else ''
     certificate_domains = _active_cert_domains(data)
     if user['role'] == 'admin':
-        assistant_view = assistant_settings.public_view(_assistant_settings(data))
-        assistant_view['env_override'] = bool(
-            os.environ.get('TTVPN_ASSISTANT_API_KEY', '').strip())
+        assistant_view = _assistant_public()
     else:
         assistant_view = {}
     mail_context = {}

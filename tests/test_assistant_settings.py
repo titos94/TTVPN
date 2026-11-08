@@ -116,6 +116,12 @@ def test_validate_model_rejects_bad_form(value):
         assistant_settings.validate_model(value)
 
 
+def test_routerai_model_and_provider_are_supported():
+    assert assistant_settings.validate_model('deepseek/deepseek-v4-flash') == 'deepseek/deepseek-v4-flash'
+    assert assistant_settings.public_view({'provider': 'routerai'})['provider'] == 'routerai'
+    assert assistant_settings.PROVIDER_URLS['routerai'] == 'https://routerai.ru/api/v1'
+
+
 def test_public_view_never_exposes_key():
     view = assistant_settings.public_view({
         'enabled': True,
@@ -342,7 +348,7 @@ def test_test_endpoint_uses_probe_and_hides_key(monkeypatch, caplog):
     monkeypatch.delenv('TTVPN_ASSISTANT_API_KEY', raising=False)
     seen = {}
 
-    def _probe(key, model):
+    def _probe(key, model, provider='openai'):
         seen['key'] = key
         seen['model'] = model
         return {'ok': True, 'message': 'Ключ работает'}
@@ -440,7 +446,7 @@ def test_probe_slot_recovers_after_ttl(monkeypatch):
         'enabled': True, 'model': 'gpt-test', 'api_key_encrypted': token}}})
     monkeypatch.setenv('SECRET_KEY', SECRET)
     monkeypatch.setattr(panel, '_assistant_probe_key',
-                        lambda key, model: {'ok': True, 'message': 'ok'})
+                        lambda key, model, provider='openai': {'ok': True, 'message': 'ok'})
     panel._assistant_probe_started = time.monotonic()
     first = asyncio.run(panel.api_assistant_settings_test(_request({})))
     assert first.status_code == 429

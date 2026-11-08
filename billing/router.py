@@ -124,8 +124,8 @@ def _logout(request: Request) -> None:
         request.session.pop(key, None)
 
 
-def _rate_limit(request: Request, bucket: str, limit: int, window: int) -> bool:
-    key = f"{bucket}:{_client_ip(request)}"
+def _rate_limit(request: Request, bucket: str, limit: int, window: int, identity: str | None = None) -> bool:
+    key = f"{bucket}:{identity if identity is not None else _client_ip(request)}"
     now = time.time()
     hits = [t for t in _RATE.get(key, []) if now - t < window]
     if len(hits) >= limit:
@@ -189,7 +189,7 @@ async def api_assistant_message(request: Request):
     user = _current(request)
     if not user or not user.get('enabled', True):
         return JSONResponse({'error': 'Необходимо войти в кабинет'}, status_code=401)
-    if not _rate_limit(request, 'assistant', 10, 600):
+    if not _rate_limit(request, 'assistant', 10, 600, str(user['id'])):
         return JSONResponse({'error': 'Слишком много запросов. Попробуйте позже'}, status_code=429)
     raw = bytearray()
     async for chunk in request.stream():
@@ -206,14 +206,22 @@ async def api_assistant_message(request: Request):
         return JSONResponse({'error': 'Сессия устарела, обновите страницу'}, status_code=400)
     if body.get('external_processing_accepted') is not True:
         return JSONResponse({'error': 'Подтвердите отправку сообщения внешнему сервису'}, status_code=400)
-    from ttvpn_assistant import answer_customer
+    from ttvpn_assistant import answer_customer, assistant_enabled, validate_message
     try:
-        answer = await answer_customer(body.get('message'))
+        message = validate_message(body.get('message'))
+        if not assistant_enabled():
+            raise RuntimeError('disabled')
+        reserved = await asyncio.to_thread(store.reserve_assistant_request, _db(), str(user['id']),
+                                           day=datetime.now(timezone.utc).date().isoformat())
+        if not reserved:
+            return JSONResponse({'error': 'Дневной лимит помощника исчерпан'}, status_code=429,
+                                headers={'Cache-Control': 'no-store'})
+        answer = await answer_customer(message)
     except ValueError as exc:
         return JSONResponse({'error': str(exc)}, status_code=400)
     except RuntimeError:
         return JSONResponse({'error': 'Помощник временно недоступен'}, status_code=503)
-    return {'answer': answer}
+    return JSONResponse({'answer': answer}, headers={'Cache-Control': 'no-store'})
 
 @router.get("/cabinet/login", response_class=HTMLResponse)
 def page_login(request: Request, next: str = "", promo: str = ""):

@@ -189,7 +189,8 @@
 {% if assistant_available %}
 <section class="bc-card" aria-labelledby="assistant-title">
     <h2 id="assistant-title">Помощник</h2>
-    <p class="bc-muted">Сообщение будет отправлено внешнему сервису OpenAI. Не указывайте пароли, токены, VPN-ключи и персональные данные.</p>
+    <p class="bc-muted">Сообщение будет отправлено внешнему ИИ-провайдеру. Не указывайте пароли, токены, VPN-ключи и персональные данные: автоматический фильтр не гарантирует их обнаружения. Ответы ИИ могут содержать ошибки. Помощник отвечает на каждый вопрос отдельно; история не сохраняется.</p>
+    <div id="assistantHistory" role="log" aria-live="polite" aria-label="Переписка с помощником" style="max-height:24rem;overflow-y:auto;white-space:pre-wrap"></div>
     <form id="assistantForm">
         <label for="assistantMessage">Ваш вопрос</label>
         <textarea class="bc-input" id="assistantMessage" maxlength="1200" rows="3" required></textarea>
@@ -206,14 +207,27 @@
         event.preventDefault();
         const button = document.getElementById('assistantSend');
         const reply = document.getElementById('assistantReply');
+        const input = document.getElementById('assistantMessage');
+        const history = document.getElementById('assistantHistory');
+        const message = input.value.trim();
+        if (!message) { reply.textContent = 'Введите вопрос'; return; }
         button.disabled = true;
         reply.textContent = 'Ожидаем ответ…';
         try {
             const result = await bcPost('/api/billing/assistant/message', {
-                message: document.getElementById('assistantMessage').value,
+                message: message,
                 external_processing_accepted: document.getElementById('assistantConsent').checked
             });
-            reply.textContent = result.answer;
+            for (const [label, text] of [['Вы', message], ['Помощник', result.answer]]) {
+                const item = document.createElement('p');
+                item.textContent = label + ': ' + text;
+                history.appendChild(item);
+            }
+            while (history.children.length > 40) history.firstElementChild.remove();
+            history.scrollTop = history.scrollHeight;
+            input.value = '';
+            document.getElementById('assistantConsent').checked = false;
+            reply.textContent = '';
         } catch (error) {
             reply.textContent = error.message || 'Помощник временно недоступен';
         } finally {

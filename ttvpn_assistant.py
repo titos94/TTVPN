@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from assistant_settings import DEFAULT_MODEL
+from assistant_settings import DEFAULT_MODEL, PROVIDER_URLS, validate_model
 
 
 _SECRET = re.compile(
@@ -70,6 +70,7 @@ def _settings():
             'model': (os.environ.get('TTVPN_ASSISTANT_MODEL', '').strip()
                       or DEFAULT_MODEL),
             'source': 'env',
+            'provider': os.environ.get('TTVPN_ASSISTANT_PROVIDER', 'openai'),
         }
     if _resolver is None:
         return {'enabled': False, 'api_key': '', 'model': DEFAULT_MODEL,
@@ -84,6 +85,7 @@ def _settings():
         'api_key': resolved.get('api_key') or '',
         'model': resolved.get('model') or DEFAULT_MODEL,
         'source': resolved.get('source') or 'settings',
+        'provider': resolved.get('provider', 'openai'),
     }
 
 
@@ -100,7 +102,10 @@ async def answer_customer(message: str) -> str:
     if not settings['enabled'] or not key:
         raise RuntimeError('Помощник временно недоступен')
     model = settings['model']
-    if not re.fullmatch(r'[A-Za-z0-9._:-]{1,80}', model):
+    try:
+        validate_model(model)
+        base_url = PROVIDER_URLS[settings.get('provider', 'openai')]
+    except (ValueError, KeyError, TypeError):
         raise RuntimeError('Помощник временно недоступен')
     payload = {
         'model': model,
@@ -116,9 +121,9 @@ async def answer_customer(message: str) -> str:
         'max_tokens': 350,
     }
     try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=False, trust_env=False) as client:
             response = await client.post(
-                'https://api.openai.com/v1/chat/completions',
+                base_url + '/chat/completions',
                 headers={'Authorization': f'Bearer {key}'}, json=payload,
             )
             response.raise_for_status()

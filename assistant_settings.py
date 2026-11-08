@@ -25,7 +25,8 @@ PROVIDER = 'openai'
 MIN_KEY_LENGTH = 20
 MAX_KEY_LENGTH = 512
 
-_MODEL_PATTERN = re.compile(r'^[A-Za-z0-9._:-]{1,64}$')
+_MODEL_PATTERN = re.compile(r'^[A-Za-z0-9._:-]+(?:/[A-Za-z0-9._:-]+)?$')
+PROVIDER_URLS = {'openai': 'https://api.openai.com/v1', 'routerai': 'https://routerai.ru/api/v1'}
 _PRINTABLE_ASCII = re.compile(r'^[\x21-\x7e]+$')
 
 # Неподвижная соль/назначение: ключ должен выводиться одинаково при каждом
@@ -84,7 +85,9 @@ def validate_api_key(value: object) -> str:
 def validate_model(value: object) -> str:
     if value is None or (isinstance(value, str) and not value.strip()):
         return DEFAULT_MODEL
-    if not isinstance(value, str) or not _MODEL_PATTERN.match(value.strip()):
+    if (not isinstance(value, str) or len(value.strip()) > 128
+            or not _MODEL_PATTERN.fullmatch(value.strip())
+            or any(len(part) > 64 for part in value.strip().split('/'))):
         raise AssistantKeyError('Недопустимое имя модели')
     return value.strip()
 
@@ -122,7 +125,7 @@ def public_view(settings: object) -> dict:
     last4 = settings.get('key_last4')
     return {
         'enabled': bool(settings.get('enabled')),
-        'provider': PROVIDER,
+        'provider': settings.get('provider') if isinstance(settings.get('provider'), str) and settings.get('provider') in PROVIDER_URLS else PROVIDER,
         'model': settings.get('model') or DEFAULT_MODEL,
         'key_configured': bool(settings.get('api_key_encrypted')),
         'key_last4': last4 if isinstance(last4, str) and len(last4) <= 4 else '',
