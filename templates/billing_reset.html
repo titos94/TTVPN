@@ -1,0 +1,172 @@
+{% extends "billing_base.html" %}
+{% block title %}Восстановление пароля{% endblock %}
+{% block content %}
+<div class="bc-card" style="max-width:430px;margin:0 auto;">
+    <div class="bc-hero" style="padding-top:0;">
+        {% if brand.ready %}
+        <a href="{{ landing_url }}"><img src="{{ brand.logo_url }}" alt="{{ site_settings.title or 'TTVPN' }}"></a>
+        {% endif %}
+        <h1>Восстановление пароля</h1>
+    </div>
+
+    {% if not reset_ready %}
+    <div class="bc-warn" role="status">
+        Восстановление по почте сейчас недоступно{% if not mail_ready %} (почтовый сервис не настроен){% endif %}.
+        Напишите в поддержку — мы поможем вернуть доступ.
+    </div>
+    <div class="bc-sep"></div>
+    <div class="bc-muted bc-center"><a href="/cabinet/login">Вернуться к входу</a></div>
+    {% else %}
+
+    <p class="bc-muted bc-center" style="margin:0 0 18px;">
+        Укажите почту аккаунта — пришлём код. По нему можно сразу задать новый пароль.
+    </p>
+    <div class="bc-error" id="err" role="alert" aria-live="polite"></div>
+    <div class="bc-ok" id="ok" aria-live="polite"></div>
+
+    <form id="stepEmail" onsubmit="return startReset(event)">
+        <div class="bc-field">
+            <label for="email">Почта</label>
+            <input class="bc-input" type="email" id="email" name="email" autocomplete="email"
+                   inputmode="email" spellcheck="false" required autofocus>
+        </div>
+        <button class="bc-btn" type="submit" id="startBtn" style="width:100%;">Отправить код</button>
+    </form>
+
+    <form id="stepReset" onsubmit="return confirmReset(event)" style="display:none;">
+        <p class="bc-muted" style="margin-top:0;">
+            Код отправлен на <b id="codeEmail" style="overflow-wrap:anywhere;"></b>. Он действует
+            <span id="codeTtl">{{ code_ttl }}</span> мин.
+        </p>
+        <div class="bc-field">
+            <label for="code">Код из письма</label>
+            <input class="bc-input" type="text" id="code" name="code" inputmode="numeric"
+                   pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required
+                   style="letter-spacing:8px;font-size:1.3rem;text-align:center;">
+        </div>
+        <div class="bc-field">
+            <label for="password">Новый пароль (минимум {{ min_password }} символов)</label>
+            <input class="bc-input" type="password" id="password" name="password"
+                   autocomplete="new-password" minlength="{{ min_password }}" required>
+        </div>
+        <button class="bc-btn" type="submit" id="resetBtn" style="width:100%;">Сохранить пароль</button>
+        <div class="bc-sep"></div>
+        <div class="bc-muted bc-center">
+            Письмо не пришло?
+            <button class="bc-link" type="button" id="againBtn" onclick="startReset()">Отправить снова</button>
+        </div>
+        <div class="bc-muted bc-center" style="margin-top:8px;font-size:.82rem;">
+            <button class="bc-link" type="button" onclick="backToEmail()">Изменить почту</button>
+        </div>
+    </form>
+
+    <div class="bc-sep"></div>
+    <div class="bc-muted bc-center"><a href="/cabinet/login">Вернуться к входу</a></div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if reset_ready %}
+<script>
+    let email = '';
+    let timer = null;
+
+    function setBusy(btn, busy, label) {
+        if (!btn) return;
+        if (busy) {
+            if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
+            btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
+            if (label) btn.textContent = label;
+            return;
+        }
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        if (btn.dataset.idleLabel) {
+            btn.textContent = btn.dataset.idleLabel;
+            delete btn.dataset.idleLabel;
+        }
+    }
+
+    function backToEmail() {
+        document.getElementById('stepReset').style.display = 'none';
+        document.getElementById('stepEmail').style.display = '';
+        document.getElementById('email').focus();
+    }
+
+    function startCooldown(seconds) {
+        const btn = document.getElementById('againBtn');
+        if (!seconds || seconds <= 0) { btn.disabled = false; btn.textContent = 'Отправить снова'; return; }
+        let left = seconds;
+        btn.disabled = true;
+        btn.textContent = 'Отправить снова (' + left + ')';
+        if (timer) clearInterval(timer);
+        timer = setInterval(function () {
+            left -= 1;
+            if (left <= 0) {
+                clearInterval(timer); timer = null;
+                btn.disabled = false;
+                btn.textContent = 'Отправить снова';
+            } else {
+                btn.textContent = 'Отправить снова (' + left + ')';
+            }
+        }, 1000);
+    }
+
+    async function startReset(ev) {
+        if (ev) ev.preventDefault();
+        const err = document.getElementById('err');
+        const ok = document.getElementById('ok');
+        const input = document.getElementById('email');
+        const startBtn = document.getElementById('startBtn');
+        const againBtn = document.getElementById('againBtn');
+        err.classList.remove('show');
+        ok.classList.remove('show');
+        if (ev) email = input.value.trim();
+        email = (email || '').trim();
+        if (!email) { input.focus(); return false; }
+        if (ev) { setBusy(startBtn, true, 'Отправляем код…'); }
+        else { againBtn.disabled = true; againBtn.textContent = 'Отправляем…'; }
+        try {
+            const data = await bcPost('/api/billing/reset/start', { email: email });
+            setBusy(startBtn, false);
+            document.getElementById('stepEmail').style.display = 'none';
+            document.getElementById('stepReset').style.display = '';
+            document.getElementById('codeEmail').textContent = email;
+            if (data.ttl_minutes) document.getElementById('codeTtl').textContent = data.ttl_minutes;
+            document.getElementById('code').focus();
+            startCooldown(60);
+        } catch (e) {
+            setBusy(startBtn, false);
+            if (againBtn.textContent === 'Отправляем…') {
+                againBtn.disabled = false;
+                againBtn.textContent = 'Отправить снова';
+            }
+            bcShowError(err, e.message);
+        }
+        return false;
+    }
+
+    async function confirmReset(ev) {
+        ev.preventDefault();
+        const err = document.getElementById('err');
+        const btn = document.getElementById('resetBtn');
+        err.classList.remove('show');
+        setBusy(btn, true, 'Сохраняем пароль…');
+        try {
+            const data = await bcPost('/api/billing/reset/confirm', {
+                email: email,
+                code: document.getElementById('code').value.trim(),
+                password: document.getElementById('password').value
+            });
+            window.location.href = data.redirect || '/cabinet';
+        } catch (e) {
+            setBusy(btn, false);
+            bcShowError(err, e.message);
+            document.getElementById('code').select();
+        }
+        return false;
+    }
+</script>
+{% endif %}
+{% endblock %}

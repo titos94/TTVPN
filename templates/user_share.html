@@ -1,0 +1,698 @@
+{% extends "base.html" %}
+
+{% block title_extra %} — {{ _('share_title') }}{% endblock %}
+{% block page_class %}page page--share{% endblock %}
+
+{% block head_extra %}
+{# временно, до ttvpn-ui.css: общие классы дизайн-системы для страницы доступа #}
+<style>
+    .share-page {
+        max-width: 760px;
+        margin: 0 auto;
+    }
+
+    .tt-section {
+        padding: 20px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-card);
+    }
+
+    .tt-section__title {
+        margin: 0 0 6px;
+        color: var(--text-primary);
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    .tt-section__desc {
+        margin: 0 0 16px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .tt-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+        min-width: 0;
+    }
+
+    .tt-field .form-label {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
+    }
+
+    .tt-field .form-input {
+        width: 100%;
+        min-width: 0;
+        min-height: 42px;
+    }
+
+    /* --- Экран ввода пароля --- */
+    .share-lock {
+        max-width: 420px;
+        margin: 0 auto;
+        text-align: center;
+    }
+
+    .share-lock__icon {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 14px;
+        border-radius: 12px;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+
+    .share-lock__icon svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    html[data-theme="light"] .share-lock__icon {
+        color: var(--accent);
+    }
+
+    .share-lock .tt-section__desc {
+        margin-bottom: 18px;
+    }
+
+    .share-lock__form {
+        max-width: 280px;
+        margin: 0 auto;
+        text-align: start;
+    }
+
+    .share-lock__form .btn {
+        width: 100%;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    /* --- Список подключений --- */
+    .tt-table {
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-card);
+    }
+
+    .tt-table__head,
+    .tt-table__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .tt-table__head {
+        padding: 10px 18px;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+    }
+
+    .tt-table__head span:nth-child(2) {
+        justify-self: start;
+    }
+
+    .tt-table__head span:last-child {
+        justify-self: end;
+    }
+
+    .tt-table__body {
+        display: grid;
+    }
+
+    .tt-table__row {
+        padding: 14px 18px;
+    }
+
+    .tt-table__row + .tt-table__row {
+        border-top: 1px solid var(--border-color);
+    }
+
+    .tt-table__row:hover {
+        background: var(--bg-card-hover);
+    }
+
+    .share-row__name {
+        min-width: 0;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .share-row__meta {
+        display: block;
+        margin-top: 3px;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 400;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .share-row .badge {
+        justify-self: start;
+    }
+
+    .share-row .btn {
+        justify-self: end;
+    }
+
+    /* --- Пустое состояние --- */
+    .tt-empty {
+        padding: 40px 24px;
+        border: 1px dashed var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-card);
+        text-align: center;
+        color: var(--text-secondary);
+    }
+
+    .tt-empty__icon {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        margin: 0 auto 12px;
+        border-radius: 12px;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+
+    .tt-empty__icon svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .tt-empty__title {
+        color: var(--text-primary);
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    /* --- Модальное окно конфигурации --- */
+    .config-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 14px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+    }
+
+    .config-tab {
+        flex: 1;
+        padding: 8px 10px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        text-align: center;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .config-tab:hover {
+        color: var(--text-primary);
+    }
+
+    .config-tab.active {
+        background: var(--accent-surface);
+        color: var(--accent-light);
+        box-shadow: none;
+    }
+
+    html[data-theme="light"] .config-tab.active {
+        color: var(--accent);
+    }
+
+    .config-text {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-input);
+        color: var(--text-secondary);
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        resize: none;
+        outline: none;
+    }
+
+    .vpn-link-box {
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-input);
+        color: var(--text-secondary);
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+    }
+
+    .config-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+    }
+
+    .config-actions > .btn {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .qr-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 0;
+    }
+
+    .qr-hint {
+        color: var(--text-muted);
+        font-size: 12px;
+        line-height: 1.5;
+        text-align: center;
+    }
+
+    .qr-format {
+        display: inline-flex;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+    }
+
+    .qr-format-btn {
+        padding: 6px 12px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--text-secondary);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .qr-format-btn.active {
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+
+    @media (max-width: 700px) {
+        .tt-section {
+            padding: 16px;
+        }
+
+        .tt-table {
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            overflow: visible;
+        }
+
+        .tt-table__head {
+            display: none;
+        }
+
+        .tt-table__body {
+            gap: 10px;
+        }
+
+        .tt-table__row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas:
+                "name badge"
+                "action action";
+            align-items: center;
+            gap: 10px 12px;
+            padding: 14px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            background: var(--bg-card);
+        }
+
+        .tt-table__row + .tt-table__row {
+            border-top: 1px solid var(--border-color);
+        }
+
+        .share-row__name {
+            grid-area: name;
+        }
+
+        .share-row .badge {
+            grid-area: badge;
+        }
+
+        .share-row .btn {
+            grid-area: action;
+            width: 100%;
+        }
+
+        .config-tab {
+            font-size: 11.5px;
+            padding: 8px 6px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="share-page">
+    <div class="page-header">
+        <div>
+            <div class="tt-eyebrow">{{ _('share_title') }}</div>
+            <h1 class="section-title page-header__title">
+                <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                {{ _('vpn_access') }}
+            </h1>
+            <p class="page-header__subtitle">{{ _('user_label_share') }}: <strong>{{ share_user.username }}</strong> —
+                ключи, QR-коды и файлы конфигурации для приложения Amnezia</p>
+        </div>
+    </div>
+
+    {% if need_password %}
+    <div class="tt-section share-lock">
+        <div class="share-lock__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h2 class="tt-section__title">Доступ защищён паролем</h2>
+        <p class="tt-section__desc">{{ _('share_protected_desc') }}</p>
+
+        <form id="authForm" onsubmit="authShare(event)" class="share-lock__form">
+            <div class="tt-field">
+                <label class="form-label" for="sharePassword">{{ _('password') }}</label>
+                <input type="password" id="sharePassword" class="form-input" placeholder="{{ _('password') }}" required
+                    autofocus>
+            </div>
+            <button type="submit" class="btn btn-primary" id="authBtn">
+                <span id="authBtnText">{{ _('login') }}</span>
+                <div class="spinner hidden" id="authSpinner"></div>
+            </button>
+        </form>
+    </div>
+    {% else %}
+    <div id="connectionsList">
+        <div id="loadingState" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <p>{{ _('loading_share_conns') }}</p>
+        </div>
+
+        <div id="connectionsGrid" class="tt-table hidden">
+            <!-- Connections will be here -->
+        </div>
+
+        <div id="emptyState" class="tt-empty hidden">
+            <div class="tt-empty__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+            <div class="tt-empty__title">{{ _('no_active_conns') }}</div>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal for Config -->
+<div class="modal-backdrop" id="configModal">
+    <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+            <h2 class="modal-title" id="configModalTitle">{{ _('config') }}</h2>
+            <button class="modal-close" onclick="closeModal('configModal')">×</button>
+        </div>
+
+        <div class="config-tabs">
+            <button class="config-tab active" onclick="switchConfigTab('conf')">{{ _('config_tab') }}</button>
+            <button class="config-tab" onclick="switchConfigTab('vpn')">{{ _('vpn_key_tab') }}</button>
+            <button class="config-tab" onclick="switchConfigTab('qr')">{{ _('qr_code_tab') }}</button>
+        </div>
+
+        <div class="config-panel active" id="panel-conf">
+            <div class="config-display">
+                <textarea class="config-text" id="configText" readonly rows="12"></textarea>
+                <div class="config-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="copyConfig()">{{ _('copy_config') }}</button>
+                    <a id="downloadBtn" class="btn btn-primary btn-sm">{{ _('download_conf') }}</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="config-panel" id="panel-vpn">
+            <div class="vpn-link-box" id="vpnLinkText"></div>
+            <div class="config-actions">
+                <button class="btn btn-secondary btn-sm" onclick="copyVpnLink()">{{ _('copy_key') }}</button>
+            </div>
+        </div>
+
+        <div class="config-panel" id="panel-qr">
+            <div class="qr-container">
+                <div class="qr-format hidden" id="qrFormat">
+                    <button type="button" class="qr-format-btn active" data-fmt="amnezia"
+                        onclick="setQrFormat('amnezia')">{{ _('qr_format_amnezia') }}</button>
+                    <button type="button" class="qr-format-btn" data-fmt="wireguard"
+                        onclick="setQrFormat('wireguard')">{{ _('qr_format_wireguard') }}</button>
+                </div>
+                <div id="qrCode"></div>
+                <div class="qr-hint" id="qrFormatHint"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const TOKEN = {{ token|tojson }};
+
+    async function authShare(e) {
+        e.preventDefault();
+        const password = document.getElementById('sharePassword').value;
+        const btn = document.getElementById('authBtn');
+        const text = document.getElementById('authBtnText');
+        const spinner = document.getElementById('authSpinner');
+
+        btn.disabled = true;
+        text.classList.add('hidden');
+        spinner.classList.remove('hidden');
+
+        try {
+            const res = await fetch(`/api/share/${TOKEN}/auth`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                window.location.reload();
+            } else {
+                alert(data.error || _('login_error'));
+            }
+        } catch (err) {
+            alert(`${_('error')}: ` + err.message);
+        } finally {
+            btn.disabled = false;
+            text.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    async function loadConnections() {
+        if (document.getElementById('loadingState') === null) return;
+
+        try {
+            const res = await fetch(`/api/share/${TOKEN}/connections`);
+            if (res.status === 401) return; // Wait for auth
+
+            const data = await res.json();
+            document.getElementById('loadingState').classList.add('hidden');
+
+            if (!data.connections || data.connections.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                return;
+            }
+
+            const grid = document.getElementById('connectionsGrid');
+            grid.classList.remove('hidden');
+            grid.innerHTML = `
+                <div class="tt-table__head" aria-hidden="true">
+                    <span>${_('device_name')}</span>
+                    <span>${_('status')}</span>
+                    <span>${_('actions')}</span>
+                </div>
+            ` + data.connections.map(c => `
+            <div class="tt-table__row share-row">
+                <div class="share-row__name">
+                    <strong>${c.name}</strong>
+                    <span class="share-row__meta">${c.protocol.toUpperCase()} · ${c.server_name}</span>
+                </div>
+                <span class="badge badge-success">${_('active')}</span>
+                <button class="btn btn-secondary btn-sm" onclick="showConfig('${c.id}', '${c.name}')">
+                    ${_('show_settings_btn')}
+                </button>
+            </div>
+        `).join('');
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function switchConfigTab(tab) {
+        document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+
+        const tabs = document.querySelectorAll('.config-tab');
+        const panels = { conf: 'panel-conf', vpn: 'panel-vpn', qr: 'panel-qr' };
+        const tabIdx = { conf: 0, vpn: 1, qr: 2 };
+
+        tabs[tabIdx[tab]].classList.add('active');
+        document.getElementById(panels[tab]).classList.add('active');
+        // the frame series only animates while its panel is on screen
+        if (tab === 'qr') { renderQR(); } else { stopQrAnimation(); }
+    }
+
+    let currentConfig = '';
+    let currentVpnLink = '';
+
+    // The QR shows one of two payloads: Amnezia's own config format, split into
+    // the frame series ImportController::parseQrCodeChunk reassembles, or the
+    // raw config, which is all AmneziaWG and wg-quick understand. The series
+    // exists because a whole config in one code lands at QR version 21-26,
+    // while the Android scanner reads 640x480 camera frames and cannot decode
+    // anything that dense. Every frame below stays under 55x55 modules.
+    const QR_FRAME_MS = 800;
+
+    let currentQrConfig = '';
+    let currentQrChunks = [];
+    let currentQrFormat = 'amnezia';
+    let qrFrame = 0;
+    let qrTimer = null;
+
+    function setQrFormat(format) {
+        currentQrFormat = format;
+        qrFrame = 0;
+        renderQR();
+    }
+
+    function generateQR(text, chunks) {
+        currentQrConfig = text || '';
+        currentQrChunks = chunks || [];
+        qrFrame = 0;
+        renderQR();
+    }
+
+    function stopQrAnimation() {
+        if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
+    }
+
+    function drawQr(text, size) {
+        const container = document.getElementById('qrCode');
+        if (!container) return;
+        container.innerHTML = '';
+        try {
+            new QRCode(container, {
+                text: text, width: size, height: size,
+                colorDark: '#000000', colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        } catch (e) {
+            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;">${_('qr_error')}</div>`;
+        }
+    }
+
+    function renderQR() {
+        stopQrAnimation();
+        const named = currentQrFormat === 'amnezia' && currentQrChunks.length > 0;
+        const switcher = document.getElementById('qrFormat');
+        if (switcher) {
+            switcher.classList.toggle('hidden', currentQrChunks.length === 0);
+            switcher.querySelectorAll('.qr-format-btn').forEach(b =>
+                b.classList.toggle('active', b.dataset.fmt === (named ? 'amnezia' : 'wireguard')));
+        }
+        const hint = document.getElementById('qrFormatHint');
+        if (!named) {
+            if (hint) hint.textContent = _('qr_format_wireguard_hint');
+            drawQr(currentQrConfig, qrSize(document.getElementById('qrCode') || document.body, 280));
+            return;
+        }
+        const paint = () => {
+            drawQr(currentQrChunks[qrFrame], qrSize(document.getElementById('qrCode') || document.body, 300));
+            if (hint) {
+                hint.textContent = currentQrChunks.length > 1
+                    ? `${_('qr_format_amnezia_hint')} ${qrFrame + 1}/${currentQrChunks.length}`
+                    : _('qr_format_amnezia_hint');
+            }
+        };
+        paint();
+        if (currentQrChunks.length > 1) {
+            qrTimer = setInterval(() => {
+                // the modal was closed or another tab opened -- offsetParent is
+                // null once the panel is off screen, so stop burning a timer
+                const container = document.getElementById('qrCode');
+                if (!container || !container.offsetParent) { stopQrAnimation(); return; }
+                qrFrame = (qrFrame + 1) % currentQrChunks.length;
+                paint();
+            }, QR_FRAME_MS);
+        }
+    }
+
+    async function showConfig(connId, name) {
+        try {
+            const res = await fetch(`/api/share/${TOKEN}/config/${connId}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            currentConfig = data.config;
+            currentVpnLink = data.vpn_link || '';
+
+            document.getElementById('configText').value = data.config;
+            document.getElementById('vpnLinkText').textContent = currentVpnLink;
+            document.getElementById('configModalTitle').textContent = name;
+
+            const dl = document.getElementById('downloadBtn');
+            dl.onclick = () => downloadFile(data.config, `${name}.conf`);
+
+            generateQR(data.config, data.vpn_qr_chunks);
+
+            switchConfigTab('conf');
+            openModal('configModal');
+        } catch (err) {
+            alert(`${_('error')}: ` + err.message);
+        }
+    }
+
+    function copyConfig() {
+        copyToClipboard(currentConfig);
+    }
+
+    function copyVpnLink() {
+        copyToClipboard(currentVpnLink);
+    }
+
+    document.addEventListener('DOMContentLoaded', loadConnections);
+</script>
+{% endblock %}

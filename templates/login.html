@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang=='fa' %}dir="rtl" {% endif %}>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0a0a0f" id="metaThemeColor">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="{{ site_settings.title or 'Amnezia' }}">
+    <title>{{ site_settings.title or 'Amnezia Panel' }} — {{ _('login') }}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
+    <script>!function () { var t = localStorage.getItem('theme') || 'dark'; document.documentElement.setAttribute('data-theme', t); var m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'light' ? '#f5f5f7' : '#0a0a0f'; }()</script>
+    <style>
+        .login-wrapper {
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-lg);
+            padding-top: calc(var(--space-lg) + env(safe-area-inset-top));
+            padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
+            background: var(--bg);
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-logo {
+            text-align: center;
+            margin-bottom: var(--space-xl);
+        }
+
+        .login-logo .logo-icon {
+            width: 72px;
+            height: 72px;
+            font-size: 2rem;
+            margin: 0 auto var(--space-md);
+        }
+
+        /* Логотип владельца на странице входа: без плитки, рамки и тени. */
+        .login-brand-logo {
+            display: block;
+            width: auto;
+            max-width: 240px;
+            height: 64px;
+            margin: 0 auto var(--space-md);
+            object-fit: contain;
+            object-position: center;
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 0;
+        }
+
+        .login-logo .logo-text {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .login-logo .logo-subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .login-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            padding: var(--space-sm) var(--space-md);
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            margin-bottom: var(--space-md);
+            display: none;
+        }
+
+        .login-error.visible {
+            display: block;
+        }
+
+        .lang-check {
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        [dir="rtl"] .lang-check {
+            margin-right: auto;
+        }
+
+        [dir="ltr"] .lang-check {
+            margin-left: auto;
+        }
+
+        .login-fixed-toggle {
+            position: fixed;
+            top: calc(20px + env(safe-area-inset-top));
+            z-index: 10;
+        }
+
+        .login-fixed-toggle.theme {
+            right: calc(20px + env(safe-area-inset-right));
+        }
+
+        .login-fixed-toggle.lang {
+            right: calc(65px + env(safe-area-inset-right));
+        }
+
+        [dir="rtl"] .login-fixed-toggle.theme {
+            right: auto;
+            left: calc(20px + env(safe-area-inset-left));
+        }
+
+        [dir="rtl"] .login-fixed-toggle.lang {
+            right: auto;
+            left: calc(65px + env(safe-area-inset-left));
+        }
+    </style>
+</head>
+
+<body>
+    <button class="theme-toggle login-fixed-toggle lang" onclick="openModal('langModal')" id="langToggle"
+        title="{{ _('select_lang') }}">
+        {% if lang == 'ru' %}🇷🇺{% elif lang == 'fr' %}🇫🇷{% elif lang == 'zh' %}🇨🇳{% elif lang == 'fa' %}🇮🇷{%
+        else %}🇺🇸{% endif %}
+    </button>
+    <button class="theme-toggle login-fixed-toggle theme" onclick="toggleTheme()" id="themeToggle"
+        title="{{ _('toggle_theme') }}"><svg class="tt-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg></button>
+
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-logo">
+                {% if brand.ready %}
+                <img class="login-brand-logo" src="{{ brand.logo_url }}" alt="" aria-hidden="true">
+                {% else %}
+                <div class="logo-icon">{% if site_settings.logo %}{{ site_settings.logo }}{% else %}<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.2 8.2 7.5 9.5 4.3-1.3 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>{% endif %}</div>
+                {% endif %}
+                <div class="logo-text">{{ site_settings.title or 'Amnezia Panel' }}</div>
+                <div class="logo-subtitle">{{ site_settings.subtitle or 'Web Panel' }}</div>
+            </div>
+
+            <div class="card">
+                <h2 style="font-size:1.2rem; font-weight:600; margin-bottom:var(--space-lg); text-align:center;">{{
+                    _('login_title') }}</h2>
+
+                <div class="login-error" id="loginError"></div>
+
+                <form id="loginForm" onsubmit="return doLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('username') }}</label>
+                        <input class="form-input" type="text" id="username" placeholder="admin" required autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">{{ _('password') }}</label>
+                        <input class="form-input" type="password" id="password" placeholder="••••••••" required>
+                    </div>
+
+                    {% if captcha_settings.enabled %}
+                    <div class="form-group">
+                        <label class="form-label">{{ _('captcha') }}</label>
+                        <div
+                            style="display: flex; margin-bottom: var(--space-xs); border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-color);">
+                            <img id="captchaImage" src="/api/auth/captcha" alt="Captcha"
+                                style="width: 100%; height: 65px; object-fit: cover; object-position: center; cursor: pointer; background: #fff;"
+                                onclick="refreshCaptcha()" title="{{ _('captcha_hint') }}">
+                        </div>
+                        <input class="form-input" type="text" id="captcha" placeholder="{{ _('captcha_placeholder') }}"
+                            required>
+                    </div>
+                    {% endif %}
+
+                    <button type="submit" class="btn btn-primary" id="loginBtn"
+                        style="width:100%; margin-top:var(--space-md);">
+                        <span id="loginBtnText">{{ _('login') }}</span>
+                        <div class="spinner hidden" id="loginSpinner"></div>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Language Modal ===== -->
+    <div class="modal-backdrop" id="langModal">
+        <div class="modal" style="max-width: 320px;">
+            <div class="modal-header">
+                <h2 class="modal-title">{{ _('select_lang') }}</h2>
+                <button class="modal-close" onclick="closeModal('langModal')">×</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                {% set langs = [
+                ('en', '🇺🇸', 'lang_en'),
+                ('ru', '🇷🇺', 'lang_ru'),
+                ('fr', '🇫🇷', 'lang_fr'),
+                ('zh', '🇨🇳', 'lang_zh'),
+                ('fa', '🇮🇷', 'lang_fa')
+                ] %}
+                {% for l_code, l_flag, l_key in langs %}
+                <a href="/set_lang/{{ l_code }}" class="btn btn-secondary"
+                    style="justify-content: flex-start; gap: var(--space-md); padding: var(--space-md);">
+                    <span style="font-size: 1.4rem;">{{ l_flag }}</span>
+                    <span style="font-weight: 500;">{{ _(l_key) }}</span>
+                    {% if lang == l_code %}
+                    <span class="lang-check">✓</span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // The login page only needs the three strings its inline JS references;
+        // dumping the full UI dictionary here would publicly showcase every
+        // panel feature (servers, protocols, integrations) in view-source.
+        window.I18N = {{ login_translations_json | safe }};
+        window._ = function (key) { return window.I18N[key] || key; };
+
+        /* Theme toggle */
+        (function () {
+            const saved = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', saved);
+
+            const updateUI = () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                document.querySelectorAll('.theme-toggle').forEach(btn => {
+                    if (btn.id === 'themeToggle') {
+                        const THEME_SUN = '<svg class="tt-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+                        const THEME_MOON = '<svg class="tt-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>';
+                        btn.innerHTML = isLight ? THEME_SUN : THEME_MOON;
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateUI);
+            } else {
+                updateUI();
+            }
+
+            window.toggleTheme = function () {
+                const current = document.documentElement.getAttribute('data-theme') || 'dark';
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                const meta = document.getElementById('metaThemeColor') || document.querySelector('meta[name="theme-color"]');
+                if (meta) meta.content = next === 'light' ? '#f5f5f7' : '#0a0a0f';
+                updateUI();
+            };
+        })();
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js?v={{ static_v }}').catch(() => {});
+        }
+
+        /* ===== Modal Management ===== */
+        function openModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
+
+        /* Close modal on backdrop click */
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-backdrop') && e.target.classList.contains('active')) {
+                e.target.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
+        /* Close modal on Escape */
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-backdrop.active').forEach(m => {
+                    m.classList.remove('active');
+                });
+                document.body.style.overflow = '';
+            }
+        });
+
+        function refreshCaptcha() {
+            const img = document.getElementById('captchaImage');
+            if (img) {
+                img.src = '/api/auth/captcha?' + new Date().getTime();
+            }
+        }
+
+        async function doLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            const text = document.getElementById('loginBtnText');
+            const spinner = document.getElementById('loginSpinner');
+            const errEl = document.getElementById('loginError');
+
+            btn.disabled = true;
+            text.textContent = _('logging_in');
+            spinner.classList.remove('hidden');
+            errEl.classList.remove('visible');
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value,
+                        captcha: document.getElementById('captcha') ? document.getElementById('captcha').value : null,
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || _('login_error'));
+                }
+                window.location.href = '/';
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.classList.add('visible');
+                refreshCaptcha();
+                if (document.getElementById('captcha')) {
+                    document.getElementById('captcha').value = '';
+                }
+            } finally {
+                btn.disabled = false;
+                text.textContent = _('login');
+                spinner.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+
+</html>

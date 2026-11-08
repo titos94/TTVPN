@@ -1,0 +1,27 @@
+{% extends "billing_base.html" %}
+{% block title %}Оплата{% endblock %}
+{% block content %}
+<div class="bc-card bc-center">
+    {% if status == 'succeeded' %}
+    <h1>Оплата получена</h1>
+    <p class="bc-muted">Подписка активирована{% if plan %} по тарифу «{{ plan.name }}»{% endif %}.</p>
+    <div class="bc-sep"></div>
+    <a class="bc-btn" href="/cabinet">Перейти в кабинет</a>
+    {% elif status == 'canceled' %}
+    <h1>Платёж отменён</h1>
+    <p class="bc-muted">Деньги не списаны. Можно попробовать снова.</p>
+    <div class="bc-sep"></div>
+    <a class="bc-btn" href="/plans">Выбрать тариф</a>
+    {% elif status == 'pending' %}
+    <h1>Ожидаем подтверждение</h1>
+    <p class="bc-muted">Платёж обрабатывается. Обновите страницу через несколько секунд.</p>
+    <div class="bc-sep"></div>
+    <a class="bc-btn" href="/cabinet">В кабинет</a>
+    {% else %}
+    <h1>Платёж не найден</h1>
+    <p class="bc-muted">Проверьте ссылку или откройте кабинет.</p>
+    <div class="bc-sep"></div>
+    <a class="bc-btn" href="/cabinet">В кабинет</a>
+    {% endif %}
+</div>
+{% endblock %}

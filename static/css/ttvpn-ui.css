@@ -1,0 +1,3334 @@
+/* ==========================================================================
+   TTVPN — единая дизайн-система панели и личного кабинета.
+
+   Подключение:
+     templates/base.html          style.css → ttvpn-ui.css   (этот файл последний)
+     templates/billing_base.html  ttvpn-ui.css               (единственный слой)
+   Порядок проверен по шаблонам; здесь он не меняется. Всё, что ниже,
+   переопределяет старый форк при равной специфичности и не требует правки
+   разметки на 15 000 строк.
+
+   Содержание
+     1.  Токены (палитра, отступы, радиусы, типографика, контролы)
+     2.  База
+     3.  Каркас панели (.tt-shell / .tt-sidebar / .tt-topbar)
+     4.  Компоненты — единый слой вместо дублей из style.css
+         4.1 Кнопки
+         4.2 Карточки и секции
+         4.3 Формы
+         4.4 Таблицы
+         4.5 Бейджи, статусы, метрики
+         4.6 Модальные окна и уведомления
+         4.7 Пустые состояния
+         4.8 Навигация разделов
+     5.  Новые компоненты дизайн-системы (tt-*)
+         .tt-toolbar .tt-table .tt-metric .tt-section .tt-form-grid
+         .tt-field .tt-alert .tt-empty .tt-tabs .tt-switch .tt-skeleton .tt-kv
+     6.  Страницы панели: серверы, протоколы, маркетплейс
+     7.  Личный кабинет и админка биллинга (.bc-*)
+     8.  Адаптив (900 / 700 / 560 / 480 / 390)
+     9.  Доступность и анимации
+
+   Что унифицировано относительно style.css:
+     .btn и модификаторы           — высота 40px, радиус 8px, состояния
+     .card / .card-header          — отступ 20px, радиус 12px, без «свечения»
+     .form-label / .form-input     — высота 40px (44px на телефоне), фокус-кольцо
+     .modal / .modal-header        — радиус 12px, тень без фиолетового оттенка
+     .badge и модификаторы         — кегль 11px, отступ 3/9, полный радиус
+     .data-table / .clients-table  — плотные строки, заголовок, числа, действия
+     .empty-state                  — панель с пунктирной рамкой
+     .toast / .stat-pill           — плотность и палитра
+   ========================================================================== */
+
+/* ==========================================================================
+   1. ТОКЕНЫ
+   ========================================================================== */
+
+:root {
+    /* --- палитра (тёмная тема) --- */
+    --bg-primary: #101820;
+    --bg-secondary: #162333;
+    --bg-card: #182534;
+    --bg-card-hover: #1e2d3f;
+    --bg-input: #0d151d;
+    --bg-modal: rgba(16, 24, 32, 0.94);
+
+    --border-color: #344454;
+    --border-hover: #44586c;
+    --border-focus: rgba(130, 184, 255, 0.55);
+
+    --text-primary: #f3f6f9;
+    --text-secondary: #b3c0cd;
+    --text-muted: #a7b4c1;
+    --text-accent: #82b8ff;
+
+    /* Синий акцент вместо фиолетового: один цвет действия на всё приложение. */
+    --accent: #1264df;
+    --accent-light: #82b8ff;
+    --accent-dark: #0a4aa8;
+    --accent-glow: rgba(18, 100, 223, 0.25);
+    --accent-gradient: linear-gradient(135deg, #1264df, #0a4aa8);
+    --accent-surface: #1c3a5b;
+
+    /* Семантика состояний: раньше жила только в style.css, поэтому кабинет
+       (он подключает лишь ttvpn-ui.css) оставался без --success/--warning. */
+    --success: #22c55e;
+    --success-bg: rgba(34, 197, 94, 0.12);
+    --success-border: rgba(34, 197, 94, 0.25);
+
+    --danger: #ef4444;
+    --danger-bg: rgba(239, 68, 68, 0.12);
+    --danger-border: rgba(239, 68, 68, 0.25);
+
+    --warning: #f59e0b;
+    --warning-bg: rgba(245, 158, 11, 0.12);
+    --warning-border: rgba(245, 158, 11, 0.25);
+
+    --info: #3b82f6;
+    --info-bg: rgba(59, 130, 246, 0.12);
+    --info-border: rgba(59, 130, 246, 0.25);
+
+    /* --- отступы: та же шкала, что в style.css, но объявлена здесь. ---
+       Кабинет не подключает style.css, поэтому без этих токенов
+       var(--space-*) в его разметке не разрешался. */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+    --space-3xl: 64px;
+
+    /* --- радиусы: плотнее, чем в старом форке --- */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 14px;
+    --radius-full: 9999px;
+
+    /* --- тени: без фиолетового свечения --- */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.45);
+    --shadow-glow: 0 0 24px rgba(18, 100, 223, 0.16);
+    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+
+    /* --- типографика: одна шкала на панель и кабинет --- */
+    --font-family: Onest, "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, "Fira Code", monospace;
+    --text-xs: 0.72rem;
+    --text-sm: 0.8rem;
+    --text-base: 0.9rem;
+    --text-md: 1rem;
+    --text-lg: 1.1rem;
+    --text-xl: 1.4rem;
+    --text-2xl: 1.5rem;
+
+    /* --- контролы: единая высота кнопок, полей и селектов --- */
+    --control-h: 40px;
+    --control-h-sm: 32px;
+    --focus-ring: 0 0 0 3px var(--accent-glow);
+
+    /* --- переходы --- */
+    --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-theme="light"] {
+    --bg-primary: #f2f4f6;
+    --bg-secondary: #e9edf1;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f7f9fb;
+    --bg-input: #ffffff;
+    --bg-modal: rgba(255, 255, 255, 0.96);
+
+    --border-color: #dfe4e9;
+    --border-hover: #c8d2dc;
+    --border-focus: rgba(10, 74, 168, 0.4);
+
+    --text-primary: #151b24;
+    --text-secondary: #596675;
+    --text-muted: #5d6b7a;
+    --text-accent: #0a4aa8;
+
+    --accent: #0a4aa8;
+    --accent-light: #1264df;
+    --accent-dark: #073a85;
+    --accent-glow: rgba(10, 74, 168, 0.18);
+    --accent-gradient: linear-gradient(135deg, #1264df, #0a4aa8);
+    --accent-surface: #edf3fb;
+
+    --success: #16a34a;
+    --success-bg: rgba(22, 163, 74, 0.08);
+    --success-border: rgba(22, 163, 74, 0.2);
+
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.07);
+    --danger-border: rgba(220, 38, 38, 0.2);
+
+    --warning: #b45309;
+    --warning-bg: rgba(180, 83, 9, 0.09);
+    --warning-border: rgba(180, 83, 9, 0.22);
+
+    --info: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.07);
+    --info-border: rgba(37, 99, 235, 0.2);
+
+    --shadow-sm: 0 1px 2px rgba(16, 24, 32, 0.08);
+    --shadow-md: 0 4px 16px rgba(16, 24, 32, 0.1);
+    --shadow-lg: 0 8px 32px rgba(16, 24, 32, 0.16);
+    --shadow-glow: 0 0 24px rgba(10, 74, 168, 0.12);
+    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+/* ==========================================================================
+   2. БАЗА
+   ========================================================================== */
+
+/* Фон без фиолетовой «сетки» из старого форка. */
+body::before {
+    background:
+        radial-gradient(ellipse 700px 420px at 20% 0%, rgba(18, 100, 223, 0.07), transparent),
+        radial-gradient(ellipse 600px 500px at 85% 90%, rgba(130, 184, 255, 0.04), transparent);
+}
+
+::selection {
+    background: rgba(18, 100, 223, 0.32);
+    color: #fff;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    ::-webkit-scrollbar-thumb {
+        background: rgba(18, 100, 223, 0.32);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(18, 100, 223, 0.5);
+    }
+}
+
+/* ==========================================================================
+   3. КАРКАС ПАНЕЛИ
+   ========================================================================== */
+
+.tt-shell,
+.tt-shell * {
+    box-sizing: border-box;
+}
+
+.tt-shell {
+    min-height: 100vh;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.tt-shell a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.tt-shell a:focus-visible,
+.tt-shell button:focus-visible,
+.tt-shell summary:focus-visible {
+    outline: 2px solid var(--accent-light);
+    outline-offset: 3px;
+}
+
+.tt-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    width: 240px;
+    padding: 24px 16px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+}
+
+.tt-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 0 8px;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+/* Логотип из настроек панели не трогаем — только размеры контейнера. */
+.tt-brand .logo-icon {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+    border-radius: 9px;
+    box-shadow: none;
+    background: var(--accent);
+    color: #fff;
+    flex: 0 0 auto;
+}
+
+.tt-brand-text {
+    min-width: 0;
+}
+
+.tt-brand .logo-text {
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--text-primary);
+    background: none;
+    -webkit-text-fill-color: currentColor;
+}
+
+.tt-brand .logo-subtitle {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.tt-brand img {
+    display: block;
+    max-width: 170px;
+    width: auto;
+    height: 38px;
+    object-fit: contain;
+    object-position: left center;
+}
+
+/* Логотип, загруженный владельцем: только картинка, без плитки, рамки,
+   тени и скругления. Размер держим в пределах строки бренда. */
+.tt-brand-logo {
+    display: block;
+    width: auto;
+    max-width: 170px;
+    height: 38px;
+    object-fit: contain;
+    object-position: left center;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    flex: 0 0 auto;
+}
+
+/* Свёрнутое меню: широкий логотип не должен раздвигать полосу 72px. */
+.tt-shell--collapsed .tt-brand-logo {
+    max-width: 40px;
+    height: 34px;
+}
+
+/* Логотип на странице входа (login.html также держит копию этих правил
+   в своём <style>: там не подключается ttvpn-ui.css). */
+.login-brand-logo {
+    display: block;
+    width: auto;
+    max-width: 240px;
+    height: 64px;
+    margin: 0 auto var(--space-md);
+    object-fit: contain;
+    object-position: center;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* Предпросмотр логотипа в настройках: та же картинка без плитки. */
+.tt-brand-preview {
+    display: flex;
+    align-items: center;
+    min-height: 38px;
+    margin-bottom: 6px;
+    background: transparent;
+}
+
+.tt-brand-preview__img {
+    display: block;
+    width: auto;
+    max-width: 220px;
+    height: 38px;
+    object-fit: contain;
+    object-position: left center;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+.tt-sidebar-label {
+    margin: 34px 8px 10px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.tt-nav {
+    display: grid;
+    gap: 4px;
+}
+
+.tt-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 42px;
+    padding: 9px 12px;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary) !important;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.tt-nav-link > span[aria-hidden] {
+    width: 20px;
+    text-align: center;
+    font-size: 17px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.tt-nav-icon {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.tt-theme-icon {
+    display: block;
+}
+
+.tt-nav-link:hover {
+    background: var(--bg-card);
+    color: var(--text-primary) !important;
+}
+
+.tt-nav-link.active,
+.tt-nav-link--active {
+    background: var(--accent-surface);
+    color: var(--accent-light) !important;
+}
+
+html[data-theme="light"] .tt-nav-link--active,
+html[data-theme="light"] .tt-nav-link.active {
+    color: var(--accent) !important;
+}
+
+.tt-sidebar-bottom {
+    margin: auto 4px 0;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    min-width: 0;
+}
+
+.tt-sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.tt-sidebar-user strong {
+    color: var(--text-primary);
+    font-weight: 600;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tt-sidebar-user .badge { font-size: 10px; padding: 2px 7px; }
+
+.tt-sidebar-actions {
+    display: grid;
+    gap: 4px;
+}
+
+.tt-sidebar-actions .nav-logout-icon { display: block; }
+.tt-sidebar-actions .nav-logout { color: var(--text-primary); }
+
+.tt-sidebar-note {
+    padding: 8px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.tt-workspace {
+    margin-left: 240px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.tt-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 64px;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    font-size: 13px;
+}
+
+.tt-topbar-left,
+.tt-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.tt-topbar-caption,
+.tt-topbar-divider {
+    color: var(--text-muted);
+}
+
+.tt-topbar-divider {
+    margin: 0 2px;
+}
+
+.tt-topbar-title {
+    color: var(--text-primary);
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tt-sidebar-toggle {
+    display: none;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.tt-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+}
+
+.tt-icon-button:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+}
+
+.tt-content {
+    flex: 1;
+    width: 100%;
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 32px;
+    min-width: 0;
+}
+
+/* Свёрнутый сайдбар (состояние в localStorage, как на странице обзора). */
+.tt-shell--collapsed .tt-sidebar {
+    width: 72px;
+    padding-inline: 10px;
+}
+
+.tt-shell--collapsed .tt-sidebar-bottom {
+    margin-inline: 0;
+    padding: 4px;
+}
+
+.tt-shell--collapsed .tt-sidebar-label,
+.tt-shell--collapsed .tt-brand-text,
+.tt-shell--collapsed .tt-sidebar-user,
+.tt-shell--collapsed .tt-sidebar-note,
+.tt-shell--collapsed .tt-sidebar-bottom .tt-nav-link span:not([aria-hidden]) {
+    display: none;
+}
+
+.tt-shell--collapsed .tt-brand {
+    padding: 0;
+    justify-content: center;
+}
+
+.tt-shell--collapsed .tt-nav {
+    margin-top: 34px;
+}
+
+.tt-shell--collapsed .tt-nav-link {
+    justify-content: center;
+    gap: 0;
+    font-size: 0;
+    padding: 9px 6px;
+}
+
+.tt-shell--collapsed .tt-workspace {
+    margin-left: 72px;
+}
+
+.tt-shell--collapsed .tt-sidebar-toggle {
+    display: inline-flex;
+}
+
+/* Плавающая нижняя навигация телефона — в стиле нового каркаса.
+   Геометрию (позицию, safe-area, ::before) задаёт style.css, здесь только
+   палитра, чтобы панель и кабинет читались одинаково. */
+.mobile-tabbar {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+}
+
+.mobile-tabbar .tab-item {
+    color: var(--text-muted);
+}
+
+.mobile-tabbar .tab-item.active,
+.mobile-tabbar .tab-item[aria-current="page"] {
+    color: var(--accent-light);
+}
+
+/* ==========================================================================
+   4. КОМПОНЕНТЫ — единый слой
+   Здесь и только здесь живут базовые контролы. Дубли из старого форка
+   (второй .btn, второй .form-input, второй .modal) удалены: одно правило,
+   один радиус, одна высота, один набор состояний.
+   ========================================================================== */
+
+/* --- 4.1 Кнопки ---------------------------------------------------------- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    min-height: var(--control-h);
+    padding: 0 16px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast);
+}
+
+/* Старый форк рисовал поверх кнопки градиентный блик. Он ломал контраст
+   и добавлял лишнюю прозрачность — выключен. */
+.btn::before {
+    display: none;
+}
+
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: none;
+}
+
+.btn-primary:hover {
+    background: var(--accent-dark);
+    border-color: var(--accent-dark);
+    box-shadow: none;
+    transform: none;
+}
+
+.btn-primary:active {
+    transform: none;
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+}
+
+.btn-danger {
+    background: transparent;
+    border-color: var(--danger-border);
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.btn-danger:hover {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+}
+
+.btn-success {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: var(--success);
+    font-weight: 600;
+}
+
+.btn-sm {
+    min-height: var(--control-h-sm);
+    padding: 0 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+}
+
+.btn-icon {
+    width: 36px;
+    height: 36px;
+    min-height: 0;
+    padding: 0;
+    border-radius: var(--radius-sm);
+    overflow: visible;
+}
+
+.btn-icon-svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    flex-shrink: 0;
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--accent-light);
+    outline-offset: 2px;
+}
+
+.btn:disabled,
+.btn[disabled],
+.btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none;
+}
+
+.btn .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: tt-spin 0.6s linear infinite;
+}
+
+@keyframes tt-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* --- 4.2 Карточки и секции ---------------------------------------------- */
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-card);
+}
+
+.card-hover:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-card);
+    transform: none;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.card-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.card-subtitle {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.section-title .icon,
+.section-title svg {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.logo-text {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    color: var(--text-primary);
+}
+
+.logo-icon {
+    background: var(--accent);
+    box-shadow: none;
+}
+
+/* --- 4.3 Формы ----------------------------------------------------------- */
+
+.form-group {
+    margin-bottom: 14px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--control-h);
+    padding: 9px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13.5px;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-textarea {
+    min-height: 96px;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    resize: vertical;
+}
+
+.form-select {
+    padding-right: 34px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b8ba0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    cursor: pointer;
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.form-input:hover,
+.form-select:hover,
+.form-textarea:hover {
+    border-color: var(--border-hover);
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus,
+.form-input:focus-visible,
+.form-select:focus-visible,
+.form-textarea:focus-visible {
+    border-color: var(--accent);
+    background: var(--bg-input);
+    box-shadow: var(--focus-ring);
+    outline: none;
+}
+
+.form-input:disabled,
+.form-select:disabled,
+.form-textarea:disabled,
+.form-input[readonly] {
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    cursor: not-allowed;
+}
+
+.form-input.is-invalid,
+.form-input[aria-invalid="true"] {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px var(--danger-bg);
+}
+
+.form-input[type="checkbox"],
+.form-input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    min-height: 0;
+    padding: 0;
+    accent-color: var(--accent);
+}
+
+.form-hint {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    line-height: 1.45;
+}
+
+/* --- 4.4 Таблицы --------------------------------------------------------- */
+
+.data-table,
+.clients-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+
+.data-table th,
+.clients-table th {
+    padding: 9px 12px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table td,
+.clients-table td {
+    padding: 9px 12px;
+    color: var(--text-secondary);
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+    overflow-wrap: anywhere;
+}
+
+.data-table td strong,
+.clients-table td strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.data-table tbody tr:hover td,
+.clients-table tbody tr:hover td {
+    background: var(--bg-card-hover);
+}
+
+.data-table tbody tr:last-child td,
+.clients-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+/* --- 4.5 Бейджи, статусы, метрики --------------------------------------- */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.badge-success {
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid var(--success-border);
+}
+
+.badge-danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border: 1px solid var(--danger-border);
+}
+
+.badge-info {
+    background: var(--info-bg);
+    color: var(--info);
+    border: 1px solid var(--info-border);
+}
+
+.badge-warn {
+    background: var(--warning-bg);
+    color: var(--warning);
+    border: 1px solid var(--warning-border);
+}
+
+.badge-secondary {
+    background: var(--bg-card-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.stat-pill,
+.ping-ms,
+.client-meta {
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.stat-pill:hover {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+
+.stat-pill svg {
+    width: 12px;
+    height: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.stat-pill:hover svg {
+    color: var(--accent-light);
+}
+
+/* --- 4.6 Модальные окна и уведомления ----------------------------------- */
+
+.modal {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+}
+
+.modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.modal-close:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.toast {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    box-shadow: var(--shadow-md);
+}
+
+/* --- 4.7 Пустые состояния ------------------------------------------------ */
+
+.empty-state {
+    padding: 40px 24px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.empty-state .empty-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    margin-bottom: 14px;
+    border-radius: 12px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+    font-size: 0;
+    opacity: 1;
+}
+
+.empty-state .empty-icon svg {
+    width: 22px;
+    height: 22px;
+    color: inherit;
+}
+
+html[data-theme="light"] .empty-state .empty-icon {
+    color: var(--accent);
+}
+
+.empty-state .empty-title {
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.empty-state .empty-desc {
+    margin: 0 auto 18px;
+    max-width: 46ch;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* --- 4.8 Навигация разделов --------------------------------------------- */
+
+/* .settings-nav остаётся sticky (это поведение задаёт style.css и проверяют
+   тесты) — здесь только плотность и чипы вместо «таблеток» с тенью. */
+.settings-nav {
+    gap: 6px;
+    margin-bottom: 24px;
+    padding: 10px 0;
+}
+
+.settings-nav a {
+    padding: 7px 13px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.settings-nav a:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.settings-nav.is-stuck {
+    background: var(--bg-primary);
+    box-shadow: 0 10px 20px -16px rgba(0, 0, 0, 0.7);
+}
+
+/* --- Шапка страницы ------------------------------------------------------ */
+
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.page-header__title {
+    display: block;
+    margin: 0;
+    color: var(--text-primary);
+    font-size: clamp(24px, 2.6vw, 32px);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+}
+
+/* Иконка больше не тащит за собой весь заголовок: маленькая акцентная плитка. */
+.page-header .section-title .icon,
+.page-header__title .icon {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin-right: 10px;
+    vertical-align: -6px;
+    border-radius: 9px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+}
+
+html[data-theme="light"] .page-header .section-title .icon,
+html[data-theme="light"] .page-header__title .icon {
+    color: var(--accent);
+}
+
+.page-header .section-title .icon svg,
+.page-header__title .icon svg {
+    width: 18px;
+    height: 18px;
+    color: inherit;
+}
+
+.tt-eyebrow {
+    margin-bottom: 8px;
+    color: var(--accent-light);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+}
+
+html[data-theme="light"] .tt-eyebrow {
+    color: var(--accent);
+}
+
+.page-header__subtitle {
+    margin: 8px 0 0;
+    max-width: 60ch;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.page-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-left: auto;
+    padding-top: 4px;
+}
+
+/* --- Плотные строки-панели (пользователи, подключения) ------------------ */
+
+.clients-list {
+    gap: 8px;
+}
+
+.client-item,
+.entity-card {
+    padding: 14px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+
+.client-item:hover,
+.entity-card:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+}
+
+/* Аватар-буква: вместо градиента — спокойная акцентная плитка. */
+.client-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+html[data-theme="light"] .client-avatar {
+    color: var(--accent);
+}
+
+.client-name {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.client-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.client-item.peer-highlight {
+    border-color: var(--accent);
+}
+
+@media (max-width: 700px) {
+
+    .client-item,
+    .entity-card {
+        padding: 12px 14px;
+    }
+}
+
+/* Второстепенная шапка внутри страницы: без разделителя и крупного кегля. */
+.page-header--secondary,
+.clients-header.page-header {
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.page-header--secondary .page-header__title,
+.clients-header .page-header__title {
+    font-size: 17px;
+    letter-spacing: -0.01em;
+}
+
+/* Карточка с шапкой сервера — панель, а не отдельный «остров». */
+.page-header-card {
+    margin-bottom: 18px;
+    padding: 18px 20px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    box-shadow: none;
+}
+
+.page-header-card .page-header {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+/* ==========================================================================
+   5. НОВЫЕ КОМПОНЕНТЫ ДИЗАЙН-СИСТЕМЫ
+   Имена классов фиксированы: на них переверстываются внутренние страницы.
+   Каждый компонент самодостаточен — опирается только на токены этого файла,
+   поэтому работает и в панели (style.css + ttvpn-ui.css), и в кабинете
+   (только ttvpn-ui.css).
+   ========================================================================== */
+
+/* --- 5.1 .tt-section — секция страницы ---------------------------------- */
+
+.tt-section {
+    min-width: 0;
+    margin-bottom: 28px;
+}
+
+.tt-section:last-child {
+    margin-bottom: 0;
+}
+
+.tt-section__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px 20px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.tt-section__title {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+}
+
+.tt-section__desc {
+    margin: 4px 0 0;
+    max-width: 72ch;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tt-section__head>.tt-section__actions,
+.tt-section__head>.btn,
+.tt-section__head>.tt-text-link {
+    margin-left: auto;
+}
+
+/* --- 5.2 .tt-toolbar — поиск, фильтры и кнопки над таблицей ------------- */
+
+.tt-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+
+.tt-toolbar>* {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.tt-toolbar .tt-toolbar__search,
+.tt-toolbar .search-field,
+.tt-toolbar .toolbar-search {
+    flex: 1 1 220px;
+    max-width: 420px;
+}
+
+.tt-toolbar .form-input,
+.tt-toolbar .form-select,
+.tt-toolbar .tt-input {
+    min-height: var(--control-h);
+    padding-block: 0;
+}
+
+.tt-toolbar .btn {
+    min-height: var(--control-h);
+}
+
+.tt-toolbar__group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.tt-toolbar__spacer {
+    margin-left: auto;
+}
+
+.tt-toolbar__count {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tt-toolbar__label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* --- 5.3 .tt-table — плотная таблица данных ----------------------------
+   Горизонтальный скролл живёт только внутри .tt-table-wrap: страница
+   никогда не расширяется. Заголовок закреплён, пока таблица прокручивается
+   внутри обёртки (--tt-table-max-height: none — вернуть прокрутку странице). */
+
+.tt-table-wrap {
+    --tt-table-max-height: min(72vh, 760px);
+    width: 100%;
+    max-width: 100%;
+    max-height: var(--tt-table-max-height);
+    overflow: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+
+.tt-table-wrap--fluid {
+    --tt-table-max-height: none;
+}
+
+.tt-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    text-align: left;
+}
+
+.tt-table caption {
+    padding: 10px 14px;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: left;
+}
+
+.tt-table th,
+.tt-table td {
+    padding: 10px 14px;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tt-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.tt-table tbody tr:last-child>* {
+    border-bottom: 0;
+}
+
+.tt-table tbody tr:hover>* {
+    background: var(--bg-card-hover);
+}
+
+.tt-table td {
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.tt-table td strong,
+.tt-table td b {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.tt-table a {
+    color: var(--accent-light);
+    text-decoration: none;
+}
+
+.tt-table a:hover {
+    text-decoration: underline;
+}
+
+html[data-theme="light"] .tt-table a {
+    color: var(--accent);
+}
+
+/* Числа и даты: табличные цифры и выравнивание по правому краю. */
+.tt-table .tt-num,
+.tt-table .is-num,
+.tt-table th.tt-num,
+.tt-table td.tt-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Ячейка действий: тонкая колонка у правого края, кнопки в ряд. */
+.tt-table th.tt-actions,
+.tt-table td.tt-actions {
+    width: 1%;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.tt-actions:not(td):not(th) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.tt-table .tt-actions .btn {
+    min-height: var(--control-h-sm);
+}
+
+/* Пустая таблица: ячейка остаётся ячейкой, а не превращается в flex. */
+.tt-table .tt-empty,
+td.tt-empty,
+th.tt-empty {
+    display: table-cell;
+    padding: 26px 14px;
+    border-bottom: 0;
+    background: transparent;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* --- 5.4 .tt-metric — плитки показателей -------------------------------- */
+
+.tt-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+    min-width: 0;
+    margin-bottom: 20px;
+}
+
+.tt-metric-grid>* {
+    min-width: 0;
+}
+
+.tt-metric-grid--4 {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.tt-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+
+.tt-metric__label {
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.tt-metric__value {
+    color: var(--text-primary);
+    font-size: clamp(20px, 2vw, 26px);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.tt-metric__note {
+    margin-top: auto;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    line-height: 1.4;
+}
+
+.tt-metric--accent {
+    background: var(--accent-surface);
+    border-color: transparent;
+}
+
+.tt-metric--accent .tt-metric__label,
+.tt-metric--accent .tt-metric__note {
+    color: var(--text-secondary);
+}
+
+.tt-metric--accent .tt-metric__value {
+    color: var(--text-primary);
+}
+
+.tt-metric--ok .tt-metric__value {
+    color: var(--success);
+}
+
+.tt-metric--danger .tt-metric__value {
+    color: var(--danger);
+}
+
+/* --- 5.5 .tt-form-grid — двухколоночная сетка полей --------------------- */
+
+.tt-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 16px;
+    align-items: start;
+    min-width: 0;
+}
+
+.tt-form-grid>* {
+    min-width: 0;
+}
+
+.tt-form-grid>.tt-field--full,
+.tt-form-grid>.tt-form-grid__full {
+    grid-column: 1 / -1;
+}
+
+.tt-form-grid__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    margin: 4px 0 8px;
+}
+
+/* --- 5.6 .tt-field — обёртка поля (label + control + hint) -------------- */
+
+.tt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin-bottom: 14px;
+}
+
+.tt-field>* {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.tt-field>label,
+.tt-field__label {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.tt-field>input,
+.tt-field>select,
+.tt-field>textarea {
+    width: 100%;
+}
+
+.tt-field__hint,
+.tt-field>.form-hint,
+.tt-field>small {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    line-height: 1.45;
+}
+
+.tt-field__error {
+    color: var(--danger);
+    font-size: 11.5px;
+    line-height: 1.45;
+}
+
+.tt-field--check {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.tt-field--check>label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* --- 5.7 .tt-alert — сообщения ----------------------------------------- */
+
+.tt-alert {
+    --tt-alert-accent: var(--border-hover);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-inline-start: 3px solid var(--tt-alert-accent);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tt-alert>* {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tt-alert svg {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    color: var(--tt-alert-accent);
+}
+
+.tt-alert__title {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.tt-alert--info {
+    --tt-alert-accent: var(--info);
+    background: var(--info-bg);
+    border-color: var(--info-border);
+}
+
+.tt-alert--warn {
+    --tt-alert-accent: var(--warning);
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+}
+
+.tt-alert--danger {
+    --tt-alert-accent: var(--danger);
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+}
+
+.tt-alert--ok {
+    --tt-alert-accent: var(--success);
+    background: var(--success-bg);
+    border-color: var(--success-border);
+}
+
+/* --- 5.8 .tt-empty — пустое состояние ---------------------------------- */
+
+.tt-empty:not(td):not(th) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 36px 20px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.tt-empty__icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+}
+
+html[data-theme="light"] .tt-empty__icon {
+    color: var(--accent);
+}
+
+.tt-empty__icon svg {
+    width: 22px;
+    height: 22px;
+    color: inherit;
+}
+
+.tt-empty__title {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.tt-empty__text {
+    margin: 0;
+    max-width: 46ch;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tt-empty__action {
+    margin-top: 12px;
+}
+
+/* --- 5.9 .tt-tabs — переключатели разделов ----------------------------- */
+
+.tt-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+    margin-bottom: 18px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+}
+
+.tt-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.tt-tab:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.tt-tab.active,
+.tt-tab[aria-selected="true"],
+.tt-tab[aria-current="page"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.tt-tab:focus-visible {
+    outline: 2px solid var(--accent-light);
+    outline-offset: 2px;
+}
+
+/* --- 5.10 .tt-switch — тумблер настроек --------------------------------
+   Поддерживаются оба способа разметки:
+     <label class="tt-switch"><input type="checkbox"> Текст</label>
+     <button class="tt-switch" role="switch" aria-checked="true">Текст</button>
+   Сам трек рисуется псевдоэлементами, дополнительная разметка не нужна. */
+
+.tt-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 22px;
+    padding: 0 0 0 48px;
+    border: 0;
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+}
+
+[dir="rtl"] .tt-switch {
+    padding: 0 48px 0 0;
+}
+
+.tt-switch input[type="checkbox"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.tt-switch::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    width: 38px;
+    height: 22px;
+    transform: translateY(-50%);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    background: var(--bg-card-hover);
+    transition: background-color var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+.tt-switch::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 4px;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform var(--transition-fast),
+        background-color var(--transition-fast);
+}
+
+[dir="rtl"] .tt-switch::after {
+    inset-inline-start: auto;
+    right: 4px;
+}
+
+.tt-switch:hover::before {
+    border-color: var(--border-hover);
+}
+
+.tt-switch:has(input:checked)::before,
+.tt-switch[aria-checked="true"]::before,
+.tt-switch--on::before {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.tt-switch:has(input:checked)::after,
+.tt-switch[aria-checked="true"]::after,
+.tt-switch--on::after {
+    transform: translate(16px, -50%);
+    background: #fff;
+}
+
+[dir="rtl"] .tt-switch:has(input:checked)::after,
+[dir="rtl"] .tt-switch[aria-checked="true"]::after,
+[dir="rtl"] .tt-switch--on::after {
+    transform: translate(-16px, -50%);
+}
+
+.tt-switch:has(input:focus-visible)::before,
+.tt-switch:focus-visible::before {
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.tt-switch:has(input:disabled),
+.tt-switch[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* --- 5.11 .tt-skeleton — заглушка загрузки ----------------------------- */
+
+.tt-skeleton {
+    display: block;
+    min-height: 12px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg,
+            var(--bg-card-hover) 0%,
+            var(--bg-secondary) 50%,
+            var(--bg-card-hover) 100%);
+    background-size: 200% 100%;
+    animation: tt-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.tt-skeleton--text {
+    height: 12px;
+    margin-bottom: 8px;
+}
+
+.tt-skeleton--title {
+    width: 40%;
+    height: 20px;
+    margin-bottom: 12px;
+}
+
+.tt-skeleton--line {
+    height: 1px;
+    min-height: 1px;
+}
+
+.tt-skeleton--block {
+    height: 88px;
+    border-radius: var(--radius-lg);
+}
+
+.tt-skeleton--circle {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    border-radius: 50%;
+}
+
+@keyframes tt-skeleton-shimmer {
+    from {
+        background-position: 100% 0;
+    }
+
+    to {
+        background-position: -100% 0;
+    }
+}
+
+/* --- 5.12 .tt-kv — список «ключ — значение» ---------------------------- */
+
+.tt-kv:not(dl) {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    min-width: 0;
+    font-size: 13px;
+}
+
+.tt-kv:not(dl)>.tt-kv__row,
+.tt-kv:not(dl)>.tt-kv__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    gap: 4px 16px;
+    align-items: baseline;
+    min-width: 0;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tt-kv:not(dl)>.tt-kv__row:last-child,
+.tt-kv:not(dl)>.tt-kv__item:last-child {
+    border-bottom: 0;
+}
+
+.tt-kv__key {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.tt-kv__value {
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+dl.tt-kv {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    gap: 8px 16px;
+    margin: 0;
+    min-width: 0;
+    font-size: 13px;
+}
+
+dl.tt-kv dt {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+dl.tt-kv dd {
+    margin: 0;
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.tt-kv__value small,
+.tt-kv__value .tt-muted {
+    display: block;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 500;
+}
+
+/* ==========================================================================
+   6. СТРАНИЦЫ ПАНЕЛИ: СЕРВЕРЫ, ПРОТОКОЛЫ, МАРКЕТПЛЕЙС
+   Старый форк рисовал каждую плитку отдельным градиентом со свечением,
+   промо-блоки — «космическими» орбами с анимацией, а плитки метрик —
+   таблетками. Здесь тот же язык, что у обзора: плоскость, рамка 1px,
+   один акцентный цвет, акцентные плитки под иконки.
+   ========================================================================== */
+
+/* --- Серверы ------------------------------------------------------------- */
+
+.server-grid {
+    gap: 14px;
+}
+
+.server-card.card {
+    padding: 16px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    box-shadow: none;
+}
+
+.server-card.card:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+}
+
+.server-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+    font-size: 0;
+    box-shadow: none;
+}
+
+.server-icon svg {
+    width: 19px;
+    height: 19px;
+    color: inherit;
+}
+
+html[data-theme="light"] .server-icon {
+    color: var(--accent);
+}
+
+.server-name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.server-host {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.server-status-actions {
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* --- Плитки установленных приложений ------------------------------------ */
+
+.protocol-cards {
+    gap: 14px;
+}
+
+.protocol-card.card,
+.protocol-card,
+.info-card {
+    padding: 16px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    box-shadow: none;
+}
+
+.protocol-card.card:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+}
+
+/* Полоска-градиент сверху была визитной карточкой старого дизайна. */
+.protocol-card::before {
+    display: none;
+}
+
+/* Иконка протокола: одна плитка на все протоколы, без фирменных градиентов. */
+.protocol-icon,
+.protocol-awg .protocol-icon,
+.protocol-legacy .protocol-icon,
+.protocol-xray .protocol-icon,
+.protocol-telemt .protocol-icon,
+.protocol-dns .protocol-icon,
+.protocol-wireguard .protocol-icon,
+.protocol-adguard .protocol-icon,
+.protocol-socks5 .protocol-icon,
+.protocol-exit .protocol-icon,
+.protocol-nginx .protocol-icon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 0;
+    border-radius: 10px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+    font-size: 0;
+    box-shadow: none;
+}
+
+html[data-theme="light"] .protocol-icon,
+html[data-theme="light"] .protocol-awg .protocol-icon,
+html[data-theme="light"] .protocol-legacy .protocol-icon,
+html[data-theme="light"] .protocol-xray .protocol-icon,
+html[data-theme="light"] .protocol-telemt .protocol-icon,
+html[data-theme="light"] .protocol-dns .protocol-icon,
+html[data-theme="light"] .protocol-wireguard .protocol-icon,
+html[data-theme="light"] .protocol-adguard .protocol-icon,
+html[data-theme="light"] .protocol-socks5 .protocol-icon,
+html[data-theme="light"] .protocol-exit .protocol-icon,
+html[data-theme="light"] .protocol-nginx .protocol-icon {
+    color: var(--accent);
+}
+
+.protocol-icon svg {
+    width: 20px;
+    height: 20px;
+    color: inherit;
+}
+
+/* Карточки с такой же иконкой в маркетплейсе держат свой размер. */
+.protocol-icon[style*="width:38px"] svg {
+    width: 18px;
+    height: 18px;
+}
+
+.protocol-name {
+    margin-bottom: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.protocol-desc {
+    margin: 8px 0 14px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.protocol-status {
+    margin-bottom: 12px;
+}
+
+.protocol-info {
+    gap: 10px 16px;
+}
+
+.protocol-info-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+}
+
+.protocol-info-value {
+    color: var(--text-primary);
+    font-size: 12.5px;
+}
+
+/* --- Промо-блоки: панель с замком вместо градиентной витрины ------------ */
+
+.promo-block {
+    padding: 18px 20px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    box-shadow: none;
+    cursor: default;
+}
+
+.promo-block:hover {
+    transform: none;
+    border-color: var(--border-hover);
+}
+
+/* Ни шлейфа, ни плавающих орбов: они были декором старого дизайна. */
+.promo-block::after,
+.promo-orbs,
+.promo-grid-bg {
+    display: none;
+}
+
+.promo-revproxy {
+    background: var(--bg-card);
+    box-shadow: none;
+}
+
+.promo-content {
+    gap: 14px;
+}
+
+.promo-icon,
+.promo-revproxy .promo-icon {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent-surface);
+    color: var(--accent-light);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+    text-shadow: none;
+}
+
+html[data-theme="light"] .promo-icon {
+    color: var(--accent);
+}
+
+.promo-title {
+    margin-bottom: 4px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-shadow: none;
+}
+
+.promo-subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.promo-lock-badge {
+    position: static;
+    display: inline-flex;
+    align-self: flex-start;
+    margin-bottom: 12px;
+    padding: 4px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    float: none;
+}
+
+.promo-lock-badge svg {
+    width: 12px;
+    height: 12px;
+    color: inherit;
+}
+
+.promo-cta {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.promo-cta:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+    transform: none;
+}
+
+.promo-cta svg {
+    width: 13px;
+    height: 13px;
+    color: var(--text-muted);
+}
+
+/* --- Маркетплейс: плотные панели в сетке -------------------------------- */
+
+.marketplace-category {
+    margin-bottom: 22px;
+}
+
+.marketplace-category-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.marketplace-category-title span {
+    display: inline-grid;
+    place-items: center;
+    color: var(--text-muted);
+}
+
+.marketplace-category-title svg {
+    width: 13px;
+    height: 13px;
+}
+
+.marketplace-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+
+.marketplace-app-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.marketplace-app-card:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+}
+
+.marketplace-app-top .flex {
+    gap: 10px;
+}
+
+.marketplace-app-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.marketplace-app-desc {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.marketplace-app-card .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+/* --- Журнал операций и индикаторы --------------------------------------- */
+
+.log-line {
+    padding: 2px 0;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+}
+
+.log-line.success {
+    color: var(--success);
+}
+
+.log-line.error {
+    color: var(--danger);
+}
+
+.log-line.warning {
+    color: var(--warning);
+}
+
+.log-line.info {
+    color: var(--text-secondary);
+}
+
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    opacity: 0.5;
+}
+
+.status-dot-on {
+    background: var(--success);
+    opacity: 1;
+}
+
+@media (max-width: 700px) {
+
+    .protocol-card.card,
+    .protocol-card,
+    .info-card,
+    .promo-block {
+        padding: 14px;
+    }
+
+    .marketplace-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .promo-content {
+        gap: 12px;
+    }
+}
+
+/* ==========================================================================
+   7. ЛИЧНЫЙ КАБИНЕТ И АДМИНКА БИЛЛИНГА
+   Значения ниже перекрывают инлайновый <style> в billing_base.html и
+   приводят кабинет к тем же токенам, что и панель: раньше ЛК жил на
+   собственной «сланцевой» палитре и читался как другой продукт.
+   ========================================================================== */
+
+body {
+    --bc-accent: #1264df;
+    --bc-accent-2: #82b8ff;
+}
+
+html[data-theme="light"] body {
+    --bc-accent: #0a4aa8;
+    --bc-accent-2: #1264df;
+}
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+}
+
+.bc-wrap {
+    max-width: 820px;
+    padding: 20px 16px 64px;
+}
+
+.bc-top {
+    padding: 4px 0 16px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bc-brand {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+.bc-links a {
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.bc-links a:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.bc-links a.active {
+    color: var(--accent-light);
+    background: var(--accent-surface);
+}
+
+html[data-theme="light"] .bc-links a.active {
+    color: var(--accent);
+}
+
+.bc-card {
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-card);
+}
+
+.bc-card h1 {
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+}
+
+.bc-card h2 {
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+}
+
+.bc-btn {
+    background: var(--accent);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 10px 15px;
+}
+
+.bc-btn:hover {
+    background: var(--accent-dark);
+    transform: none;
+    box-shadow: none;
+}
+
+.bc-btn.ghost {
+    background: var(--bg-card-hover);
+    border: 1px solid var(--border-color);
+}
+
+.bc-btn.ghost:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+}
+
+.bc-btn:disabled,
+.bc-btn[disabled],
+.bc-btn[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.bc-field input,
+.bc-field select,
+.bc-input,
+.bc-select {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+}
+
+.bc-field input:focus,
+.bc-field select:focus,
+.bc-input:focus,
+.bc-select:focus {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
+.bc-field label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.bc-muted {
+    color: var(--text-secondary);
+}
+
+.bc-hint {
+    color: var(--text-muted);
+}
+
+.bc-sep {
+    background: var(--border-color);
+}
+
+.bc-row {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bc-device,
+.bc-plan {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.bc-device {
+    background: var(--bg-card);
+}
+
+.bc-device__body {
+    border-top: 1px solid var(--border-color);
+}
+
+.bc-device__meta {
+    color: var(--text-muted);
+}
+
+.bc-badge {
+    background: var(--bg-card-hover);
+    color: var(--text-secondary);
+    border-radius: var(--radius-full);
+}
+
+.bc-badge.ok {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.bc-badge.bad {
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+
+.bc-tab {
+    background: var(--bg-card-hover);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+}
+
+.bc-tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.bc-tabs {
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.bc-tabs a {
+    text-decoration: none;
+}
+
+/* Логотип-заглушка: щит рисуется SVG, а не эмодзи. */
+.bc-logo--text svg {
+    width: 22px;
+    height: 22px;
+    color: var(--accent-light);
+}
+
+html[data-theme="light"] .bc-logo--text svg {
+    color: var(--accent);
+}
+
+.bc-table th {
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bc-table td {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.bc-table td b,
+.bc-table td strong {
+    color: var(--text-primary);
+}
+
+.bc-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+}
+
+.bc-key,
+.bc-config {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.bc-mono {
+    color: var(--text-accent);
+}
+
+.bc-link {
+    color: var(--accent-light);
+}
+
+html[data-theme="light"] .bc-link {
+    color: var(--accent);
+}
+
+.bc-opbg img {
+    opacity: 0.85;
+}
+
+/* Статусы кабинета в палитре панели: раньше были неоново-жёлтыми. */
+.bc-ok {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: var(--success);
+}
+
+.bc-warn {
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+    color: var(--warning);
+}
+
+.bc-error {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: var(--danger);
+}
+
+.bc-trial {
+    border: 1px dashed var(--accent);
+    background: var(--accent-surface);
+}
+
+.bc-price small,
+.bc-footer,
+.bc-hero p,
+.bc-step {
+    color: var(--text-muted);
+}
+
+.bc-step__n {
+    background: var(--accent-surface);
+    color: var(--accent-light);
+}
+
+/* Кабинет раньше жил на своей «сланцевой» палитре (#0c151c / #141e26) —
+   из-за этого ЛК и панель читались как два разных продукта. */
+body.bc-client {
+    background: var(--bg-primary);
+}
+
+.bc-client .bc-card,
+.bc-client .bc-device,
+.bc-client .bc-plan {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+.bc-client .bc-top {
+    border-bottom-color: var(--border-color);
+}
+
+.bc-client .bc-field input,
+.bc-client .bc-field select,
+.bc-client .bc-input,
+.bc-client .bc-select {
+    background: var(--bg-input);
+    border-color: var(--border-color);
+}
+
+.bc-client .bc-btn.ghost,
+.bc-client .bc-tab {
+    background: var(--bg-card-hover);
+    border-color: var(--border-color);
+}
+
+.bc-client .bc-row,
+.bc-client .bc-sep,
+.bc-client .bc-table td,
+.bc-client .bc-table th {
+    border-color: var(--border-color);
+}
+
+/* Показатели в кабинете — те же карточки, что .tt-metric в панели. */
+.bc-metrics {
+    min-width: 0;
+}
+
+.bc-metric {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.bc-metric__label {
+    color: var(--text-muted);
+}
+
+.bc-metric__value {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.bc-metric__value small,
+.bc-metric__note {
+    color: var(--text-muted);
+}
+
+.bc-meter {
+    background: var(--bg-card-hover);
+}
+
+.bc-meter__fill,
+.bc-meter span {
+    background: var(--accent);
+}
+
+.bc-op {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.bc-status {
+    color: var(--text-secondary);
+}
+
+.bc-check {
+    color: var(--text-secondary);
+}
+
+.bc-grid2 {
+    min-width: 0;
+}
+
+/* ==========================================================================
+   8. АДАПТИВ
+   Правило: на 390–480px ни один компонент не вызывает горизонтальную
+   прокрутку страницы. Широкое содержимое (таблицы, код конфигов) скроллится
+   только внутри своего контейнера.
+   ========================================================================== */
+
+@media (max-width: 900px) {
+    .tt-sidebar {
+        position: static;
+        width: auto;
+        height: auto;
+        padding: 12px 16px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .tt-sidebar-label,
+    .tt-sidebar .tt-nav,
+    .tt-sidebar-bottom {
+        display: none;
+    }
+
+    .tt-brand {
+        padding: 0;
+    }
+
+    .tt-workspace {
+        margin-left: 0;
+    }
+
+    .tt-shell--collapsed .tt-sidebar,
+    .tt-shell--collapsed .tt-workspace {
+        width: auto;
+        margin-left: 0;
+    }
+
+    .tt-topbar {
+        min-height: 54px;
+        padding: 0 16px;
+    }
+
+    .tt-content {
+        padding: 20px 16px calc(88px + env(safe-area-inset-bottom));
+    }
+}
+
+@media (max-width: 700px) {
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+    }
+
+    .page-header__actions {
+        margin-left: 0;
+        padding-top: 0;
+    }
+
+    .page-header__title {
+        font-size: 22px;
+    }
+
+    .tt-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tt-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .tt-section__head {
+        align-items: flex-start;
+    }
+
+    .tt-section__head>.tt-section__actions,
+    .tt-section__head>.btn {
+        margin-left: 0;
+    }
+
+    .form-input,
+    .form-select,
+    .form-textarea {
+        min-height: 44px;
+        font-size: 16px;
+    }
+
+    .form-textarea {
+        font-size: 13px;
+    }
+
+    .tt-toolbar {
+        padding: 10px;
+    }
+
+    .tt-toolbar>*,
+    .tt-toolbar .tt-toolbar__search,
+    .tt-toolbar .search-field,
+    .tt-toolbar .toolbar-search {
+        flex: 1 1 100%;
+        max-width: 100%;
+    }
+
+    .tt-toolbar__spacer {
+        margin-left: 0;
+    }
+
+    .tt-toolbar__group {
+        flex: 1 1 100%;
+    }
+
+    .tt-alert,
+    .tt-empty:not(td):not(th) {
+        padding: 14px;
+    }
+}
+
+@media (max-width: 560px) {
+    .tt-topbar-caption,
+    .tt-topbar-divider {
+        display: none;
+    }
+
+    .tt-content {
+        padding: 16px 12px calc(88px + env(safe-area-inset-bottom));
+    }
+
+    /* Сайдбар-плитка и карточки не должны превышать ширину экрана. */
+    .tt-content>*,
+    .tt-section,
+    .card,
+    .bc-card {
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .page-header__search,
+    .search-field {
+        min-width: 0;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .tt-tabs {
+        gap: 4px;
+    }
+
+    .tt-tab {
+        flex: 1 1 auto;
+        justify-content: center;
+        padding: 0 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .tt-metric-grid {
+        gap: 8px;
+    }
+
+    .tt-metric {
+        padding: 12px;
+    }
+
+    .tt-metric__value {
+        font-size: 19px;
+    }
+
+    .tt-metric__label {
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+    }
+
+    .tt-table th,
+    .tt-table td {
+        padding: 9px 11px;
+    }
+
+    .tt-section {
+        margin-bottom: 22px;
+    }
+
+    .tt-section__title {
+        font-size: 16px;
+    }
+
+    .page-header__actions .btn {
+        flex: 1 1 auto;
+    }
+
+    .bc-wrap {
+        padding: 16px 12px 56px;
+    }
+
+    .bc-card {
+        padding: 16px;
+    }
+
+    .modal {
+        padding: 18px;
+    }
+
+    /* Ключ-значение на узком экране: значения переносятся, а не вылезают. */
+    .tt-kv:not(dl)>.tt-kv__row,
+    .tt-kv:not(dl)>.tt-kv__item,
+    dl.tt-kv {
+        gap: 4px 12px;
+    }
+}
+
+@media (max-width: 390px) {
+    .tt-content {
+        padding-inline: 10px;
+    }
+
+    .tt-metric-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tt-tab {
+        flex: 1 1 100%;
+    }
+
+    .btn-sm {
+        padding: 0 10px;
+    }
+}
+
+/* ==========================================================================
+   9. ДОСТУПНОСТЬ И АНИМАЦИИ
+   ========================================================================== */
+
+.tt-tab:focus-visible,
+.tt-switch:focus-visible,
+.tt-alert:focus-visible,
+.tt-empty__action:focus-visible,
+.btn:focus-visible,
+.bc-btn:focus-visible,
+.tt-table a:focus-visible {
+    outline: 2px solid var(--accent-light);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .tt-skeleton,
+    .btn .spinner {
+        animation: none;
+    }
+
+    .bc-btn:hover,
+    .bc-plan:hover,
+    .bc-op:hover,
+    .card-hover:hover,
+    .promo-block:hover {
+        transform: none;
+    }
+
+    .tt-switch::after,
+    .tt-switch::before,
+    .tt-tab,
+    .btn {
+        transition: none;
+    }
+}
+
+/* Единый ритм заголовков и безопасное поведение содержимого. */
+.tt-section__note {
+    margin: 4px 0 0;
+    max-width: 72ch;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.bc-client .bc-card > h2 {
+    margin: 0 0 14px;
+    font-size: 17px;
+    line-height: 1.3;
+    font-weight: 700;
+    letter-spacing: -.02em;
+}
+.bc-client .bc-card > h2 + p.bc-muted {
+    margin: -10px 0 14px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.tt-table-wrap { overflow-x: auto; }
+.tt-table td, .tt-table th, .bc-row > *, .bc-card, .tt-empty {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.tt-empty__action { margin-top: 12px; }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--accent-light);
+    outline-offset: 3px;
+}
+@media (max-width: 390px) {
+    .bc-card, .tt-section, .tt-panel { min-width: 0; max-width: 100%; }
+    .bc-row > * { overflow-wrap: anywhere; }
+}
+
+/* Состояния имеют одинаковую семантику в панели и кабинете. */
+.badge, .bc-badge {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.bc-badge.ok { border-color: var(--success-border); }
+.bc-badge.bad { border-color: var(--danger-border); }
+.bc-badge.warn { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-border); }
+.badge-danger, .bc-badge.bad { color: #ff8a8a; }
+.badge-info { color: #9ac3ff; }
+html[data-theme="light"] .badge-danger,
+html[data-theme="light"] .bc-badge.bad { color: #b91c1c; }
+html[data-theme="light"] .badge-info { color: #1d4ed8; }
+.bc-btn { box-sizing: border-box; min-height: 40px; border-radius: var(--radius-md); }
+.bc-btn.danger { background: #991b1b; color: #fff; }
+.bc-btn.danger:hover { background: #7f1d1d; }
+.tt-actions, .bc-actions, .modal-footer, .page-header__actions, .brand-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.tt-table-wrap { max-width: 100%; }
+@media (max-width: 600px) {
+    .page-header, .page-header__actions, .bc-top, .bc-row { min-width: 0; flex-wrap: wrap; }
+    .page-header__title, .page-header__subtitle, .bc-brand, .bc-mono,
+    .tt-mono, .modal-title, .modal-body, .form-hint {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+    .modal { box-sizing: border-box; max-width: 100%; }
+    .modal-body { overflow-x: auto; }
+    .tt-table th { white-space: normal; }
+}

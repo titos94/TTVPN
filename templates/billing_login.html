@@ -1,0 +1,113 @@
+{% extends "billing_base.html" %}
+{% block title %}Вход{% endblock %}
+{% block content %}
+<div class="bc-card" style="max-width:430px;margin:0 auto;">
+    <div class="bc-hero" style="padding-top:0;">
+        {% if brand.ready %}
+        <a href="{{ landing_url }}"><img src="{{ brand.logo_url }}" alt="{{ site_settings.title or 'TTVPN' }}"></a>
+        {% endif %}
+        <h1>Вход в кабинет</h1>
+    </div>
+    <p class="bc-muted bc-center" style="margin:0 0 18px;">
+        Почта и пароль от аккаунта.
+        {% if trial_public %}
+        Нет аккаунта? Регистрация бесплатна, пробный период — {{ trial_days }} дн.
+        {% endif %}
+    </p>
+    <div class="bc-error" id="err" role="alert" aria-live="polite"></div>
+    <form id="loginForm" onsubmit="return doLogin(event)">
+        <div class="bc-field">
+            <label for="email">Почта</label>
+            <input class="bc-input" type="email" id="email" name="email" autocomplete="email"
+                   inputmode="email" spellcheck="false" required autofocus>
+        </div>
+        <div class="bc-field">
+            <label for="password">Пароль</label>
+            <input class="bc-input" type="password" id="password" name="password"
+                   autocomplete="current-password" required>
+        </div>
+        <button class="bc-btn" type="submit" id="submitBtn" style="width:100%;">Войти</button>
+    </form>
+    {% if tg_ready %}
+    <div class="bc-sep"></div>
+    <a class="bc-btn bc-tgbtn"
+       href="/cabinet/tg?next={{ next_url | urlencode }}{% if promo_code %}&promo={{ promo_code | urlencode }}{% endif %}"
+       id="tgBtn" rel="noopener">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M21.9 4.3 18.7 19c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.3 12.2 1.5 10.7c-1-.3-1-1 .2-1.5l19-7.3c.9-.3 1.6.2 1.2 2.4Z"/>
+        </svg>
+        Войти через Telegram
+    </a>
+    <p class="bc-muted bc-center" style="margin:8px 0 0;font-size:.78rem;">
+        Одна кнопка: откроется бот, нажмите «Старт» — кабинет откроется сам.
+    </p>
+    {% endif %}
+    <div class="bc-sep"></div>
+    <div class="bc-muted bc-center" style="margin-bottom:10px;">
+        <a href="/cabinet/reset">Забыли пароль?</a>
+    </div>
+    <div class="bc-muted bc-center">Нет аккаунта?
+        <a href="/register{% if next_url and next_url != '/cabinet' %}?next={{ next_url | urlencode }}{% if promo_code %}&promo={{ promo_code | urlencode }}{% endif %}{% elif promo_code %}?promo={{ promo_code | urlencode }}{% endif %}">Зарегистрироваться</a>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    function setBusy(btn, busy, label) {
+        if (!btn) return;
+        if (busy) {
+            if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
+            btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
+            if (label) btn.textContent = label;
+            return;
+        }
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        if (btn.dataset.idleLabel) {
+            btn.textContent = btn.dataset.idleLabel;
+            delete btn.dataset.idleLabel;
+        }
+    }
+
+    async function doLogin(event) {
+        event.preventDefault();
+        const err = document.getElementById('err');
+        const btn = document.getElementById('submitBtn');
+        err.classList.remove('show');
+        err.textContent = '';
+        setBusy(btn, true, 'Входим…');
+        try {
+            const data = await bcPost('/api/billing/login', {
+                email: document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value
+            });
+            const next = {{ next_url | tojson }};
+            const promo = {{ promo_code | tojson }};
+            if (next && next !== '/cabinet') {
+                const sep = next.indexOf('?') === -1 ? '?' : '&';
+                const withPromo = (promo && next.indexOf('promo=') === -1)
+                    ? next + sep + 'promo=' + encodeURIComponent(promo) : next;
+                window.location.href = withPromo;
+                return false;
+            }
+            window.location.href = data.redirect || '/cabinet';
+        } catch (e) {
+            setBusy(btn, false);
+            bcShowError(err, e.message);
+        }
+        return false;
+    }
+    (function () {
+        const q = new URLSearchParams(location.search);
+        const why = q.get('tg');
+        if (why === 'unavailable') {
+            bcShowError(document.getElementById('err'),
+                'Вход через Telegram сейчас недоступен. Войдите по почте или напишите в поддержку.');
+        } else if (why === 'slow') {
+            bcShowError(document.getElementById('err'),
+                'Слишком много попыток входа через Telegram. Подождите пару минут.');
+        }
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,328 @@
+{% extends "billing_base.html" %}
+{% block title %}Кабинет{% endblock %}
+{% block footer %}{{ site_settings.title or 'TTVPN' }}{% endblock %}
+{% block content %}
+<div class="bc-card">
+    <h1>Личный кабинет</h1>
+    <p class="bc-muted" style="margin-top:0;">
+        {{ user.email or user.username }}
+        <span style="display:block;margin-top:6px;font-size:.82rem;">
+            <a href="/cabinet/password">Сменить пароль</a>
+        </span>
+    </p>
+
+    <div class="bc-row">
+        <span>Подписка</span>
+        <span>
+            {% if active %}<span class="bc-badge ok">активна</span>
+            {% else %}<span class="bc-badge bad">не активна</span>{% endif %}
+        </span>
+    </div>
+    <div class="bc-row">
+        <span>Действует до</span>
+        <span id="expiryValue"><b>{{ expiry if active else '—' }}</b></span>
+    </div>
+    {% if trial_record %}
+    <div class="bc-row">
+        <span>Пробный период</span>
+        <span class="bc-muted">{{ trial_record.days }} дн., с {{ trial_record.started_at[:10] }}</span>
+    </div>
+    {% endif %}
+
+    <div class="bc-sep"></div>
+    <div class="bc-actions" style="justify-content:flex-start;">
+        <a class="bc-btn" href="/plans">{{ 'Продлить подписку' if active else 'Оформить подписку' }}</a>
+        {% if devices %}
+        <a class="bc-btn ghost" href="/cabinet/connections">Мои подключения</a>
+        <a class="bc-btn ghost" href="/cabinet/connections?device={{ devices[0].id }}&tab=qr">
+            Ключ и QR-код
+        </a>
+        {% endif %}
+        {% if trial.available %}
+        <button class="bc-btn ghost" type="button" id="trialBtn" onclick="startTrial()">
+            Пробный период {{ trial.days }} дн.
+        </button>
+        {% endif %}
+    </div>
+    <div class="bc-error" id="err" style="margin-top:12px;"></div>
+    <div class="bc-ok" id="ok" style="margin-top:12px;"></div>
+
+    {% if not devices and active %}
+    <p class="bc-muted" style="margin-top:12px;">
+        Устройство ещё не создано. Откройте «Подключения» и нажмите «Создать устройство» —
+        оплаченный период при этом не расходуется.
+        <a href="/cabinet/connections">Перейти к подключениям</a>.
+    </p>
+    {% elif not active %}
+    <p class="bc-muted" style="margin-top:12px;">
+        После оплаты проверьте статус подписки и раздел «Подключения».
+    </p>
+    {% endif %}
+</div>
+
+{% set used = devices | length %}
+{% set limit = device_limit or 0 %}
+{% set free = [limit - used, 0] | max %}
+{% set used_pct = [(used * 100 / limit) | round(0, 'floor') | int, 100] | min if limit else 0 %}
+<div class="bc-card">
+    <h2>Обзор подписки</h2>
+    <div class="bc-metrics">
+        <div class="bc-metric">
+            <span class="bc-metric__label">Осталось</span>
+            <span class="bc-metric__value">
+                {% if active %}<span data-days-left data-expires="{{ user.expiration_date }}">—</span>{% else %}—{% endif %}
+            </span>
+            <span class="bc-metric__note">{% if active %}до {{ expiry }}{% else %}подписка не активна{% endif %}</span>
+        </div>
+        <div class="bc-metric">
+            <span class="bc-metric__label">Устройства</span>
+            <span class="bc-metric__value">{{ used }}<small> из {{ limit }}</small></span>
+            <span class="bc-meter" aria-hidden="true">
+                <span class="bc-meter__fill" style="--bc-meter: {{ used_pct }}%"></span>
+            </span>
+            <span class="bc-metric__note">
+                {% if free > 0 %}свободно {{ free }}{% else %}лимит тарифа исчерпан{% endif %}
+            </span>
+        </div>
+        <div class="bc-metric">
+            <span class="bc-metric__label">Записи о платежах</span>
+            <span class="bc-metric__value">{{ payments | length }}</span>
+            <span class="bc-metric__note">показано в истории ниже</span>
+        </div>
+    </div>
+    {% if not active %}
+    <div class="bc-infographic">
+        <div class="bc-sep"></div>
+        <div class="bc-muted">Как включить доступ</div>
+        <div class="bc-flow">
+            <div class="bc-flow__item">
+                <span class="bc-flow__n">1</span>
+                <span class="bc-flow__title">Выбрать способ</span>
+                <span class="bc-flow__note">Проверьте доступные варианты в кабинете.</span>
+            </div>
+            <span class="bc-flow__arrow" aria-hidden="true">→</span>
+            <div class="bc-flow__item">
+                <span class="bc-flow__n">2</span>
+                <span class="bc-flow__title">Получить ключ</span>
+                <span class="bc-flow__note">Откройте раздел «Подключения».</span>
+            </div>
+            <span class="bc-flow__arrow" aria-hidden="true">→</span>
+            <div class="bc-flow__item">
+                <span class="bc-flow__n">3</span>
+                <span class="bc-flow__title">Подключиться</span>
+                <span class="bc-flow__note">Импортируйте ключ в Amnezia.</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="bc-card" id="promo">
+    <h2>Промокод</h2>
+    <p class="bc-muted" style="margin-top:0;">Введите код — покажем, что он даёт, и применим при оплате.</p>
+    <div class="bc-promo">
+        <div class="bc-field" style="flex:1 1 180px;margin:0;">
+            <input type="text" id="promoCode" placeholder="НАПРИМЕР START50"
+                   autocomplete="off" style="text-transform:uppercase;">
+        </div>
+        <button class="bc-btn ghost" type="button" onclick="applyPromo()">Применить</button>
+    </div>
+    <div class="bc-hint" id="promoHint"></div>
+    <div class="bc-sep" id="promoSep" style="display:none;"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="bc-btn" id="promoActivate" type="button" style="display:none;"
+                onclick="activatePromo()">Активировать промокод</button>
+        <a class="bc-btn ghost" id="promoGo" href="/plans" style="display:none;">Перейти к тарифам</a>
+    </div>
+</div>
+
+{% if devices %}
+<div class="bc-card">
+    <h2>Устройства</h2>
+    {% for device in devices %}
+    <div class="bc-row">
+        <span>
+            <b>{{ device.name }}</b>
+            <span class="bc-muted"> · {{ device.protocol }}</span>
+        </span>
+        <a href="/cabinet/connections?device={{ device.id }}&tab=qr" style="font-size:.88rem;">
+            Ключ и QR →
+        </a>
+    </div>
+    {% endfor %}
+    <div class="bc-sep"></div>
+    <a class="bc-btn ghost" href="/cabinet/connections">Все подключения и инструкция</a>
+</div>
+{% endif %}
+
+<div class="bc-card">
+    <h2>Платежи</h2>
+    <p class="bc-muted">Показаны последние записи о платежах, не более 20.</p>
+    {% if not payments %}
+    <div class="tt-empty" role="status">
+        <span class="tt-empty__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="tt-empty__title">Платежей пока нет</span>
+        <a class="bc-btn ghost tt-empty__action" href="/plans">Посмотреть тарифы</a>
+    </div>
+    {% else %}
+    {% for p in payments %}
+    <div class="bc-row">
+        <span>
+            <b>{{ p.plan_name or 'Тариф' }}</b>
+            <span class="bc-muted" style="display:block;font-size:.78rem;">
+                {{ p.created_at[:16].replace('T', ' ') }}
+                {% if p.promo_code %} · {{ p.promo_code }}{% endif %}
+            </span>
+        </span>
+        <span style="text-align:right;">
+            <b>{{ format_money(p.amount_kopecks) }}</b>
+            {% if p.status == 'succeeded' %}<span class="bc-badge ok" style="display:block;margin-top:4px;">оплачен</span>
+            {% elif p.status == 'canceled' %}<span class="bc-badge bad" style="display:block;margin-top:4px;">отменён</span>
+            {% elif p.status == 'refunded' %}<span class="bc-badge" style="display:block;margin-top:4px;">возвращён</span>
+            {% elif p.status == 'pending' %}<span class="bc-badge warn" style="display:block;margin-top:4px;">ожидает</span>
+            {% else %}<span class="bc-badge" style="display:block;margin-top:4px;">статус неизвестен</span>{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+{% if assistant_available %}
+<section class="bc-card" aria-labelledby="assistant-title">
+    <h2 id="assistant-title">Помощник</h2>
+    <p class="bc-muted">Сообщение будет отправлено внешнему сервису OpenAI. Не указывайте пароли, токены, VPN-ключи и персональные данные.</p>
+    <form id="assistantForm">
+        <label for="assistantMessage">Ваш вопрос</label>
+        <textarea class="bc-input" id="assistantMessage" maxlength="1200" rows="3" required></textarea>
+        <label><input type="checkbox" id="assistantConsent" required> Согласен отправить сообщение внешнему сервису</label>
+        <button class="bc-btn" type="submit" id="assistantSend">Отправить</button>
+    </form>
+    <p id="assistantReply" role="status" aria-live="polite" style="white-space:pre-wrap"></p>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+    document.getElementById('assistantForm')?.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const button = document.getElementById('assistantSend');
+        const reply = document.getElementById('assistantReply');
+        button.disabled = true;
+        reply.textContent = 'Ожидаем ответ…';
+        try {
+            const result = await bcPost('/api/billing/assistant/message', {
+                message: document.getElementById('assistantMessage').value,
+                external_processing_accepted: document.getElementById('assistantConsent').checked
+            });
+            reply.textContent = result.answer;
+        } catch (error) {
+            reply.textContent = error.message || 'Помощник временно недоступен';
+        } finally {
+            button.disabled = false;
+        }
+    });
+    // "Осталось" is derived from the real expiry the server rendered;
+    // without JS the tile keeps the date and a neutral dash.
+    (function () {
+        const el = document.querySelector('[data-days-left]');
+        if (!el) return;
+        const raw = el.getAttribute('data-expires') || '';
+        const expires = raw ? new Date(raw) : null;
+        if (!expires || isNaN(expires.getTime())) return;
+        const days = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 86400000));
+        const m10 = days % 10, m100 = days % 100;
+        const word = (m10 === 1 && m100 !== 11) ? 'день'
+            : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? 'дня' : 'дней';
+        el.textContent = days + ' ' + word;
+    })();
+
+    function goWithPromo(code) {
+        sessionStorage.setItem('bc_promo', code);
+        window.location.href = '/plans?promo=' + encodeURIComponent(code);
+    }
+
+    let appliedCode = '';
+
+    function showProjectedExpiry(projection) {
+        if (!projection) return;
+        const cell = document.getElementById('expiryValue');
+        cell.innerHTML = '<b>' + projection.expiry + '</b>' +
+            '<span class="bc-muted" style="display:block;font-size:.75rem;">после промокода</span>';
+    }
+
+    async function applyPromo() {
+        const err = document.getElementById('err');
+        const hint = document.getElementById('promoHint');
+        const go = document.getElementById('promoGo');
+        const act = document.getElementById('promoActivate');
+        const sep = document.getElementById('promoSep');
+        const code = (document.getElementById('promoCode').value || '').trim().toUpperCase();
+        err.classList.remove('show');
+        hint.textContent = '';
+        go.style.display = 'none';
+        act.style.display = 'none';
+        sep.style.display = 'none';
+        if (!code) { bcShowError(err, 'Введите промокод'); return; }
+        try {
+            const data = await bcPost('/api/billing/promo/check', { promo_code: code });
+            appliedCode = data.code;
+            sessionStorage.setItem('bc_promo', data.code);
+            const parts = ['Промокод ' + data.code + ': ' + data.label];
+            if (data.bonus_days) {
+                parts.push('добавит ' + data.bonus_days + ' дн. к сроку тарифа после оплаты');
+            } else if (data.days_granted) {
+                parts.push('даст ' + data.days_granted + ' дн. доступа без оплаты');
+            } else {
+                parts.push('действует на любой тариф');
+            }
+            hint.textContent = parts.join(' · ');
+            sep.style.display = 'block';
+            showProjectedExpiry(data.projection);
+            if (data.can_activate) {
+                act.textContent = 'Активировать +' + data.days_granted + ' дн.';
+                act.style.display = 'inline-flex';
+            } else {
+                go.style.display = 'inline-flex';
+                go.onclick = (ev) => { ev.preventDefault(); goWithPromo(data.code); };
+            }
+        } catch (e) {
+            appliedCode = '';
+            sessionStorage.removeItem('bc_promo');
+            bcShowError(err, e.message);
+        }
+    }
+
+    async function activatePromo() {
+        const err = document.getElementById('err');
+        const act = document.getElementById('promoActivate');
+        err.classList.remove('show');
+        if (!appliedCode) { bcShowError(err, 'Сначала введите промокод'); return; }
+        act.disabled = true;
+        try {
+            const data = await bcPost('/api/billing/promo/activate', { promo_code: appliedCode });
+            sessionStorage.removeItem('bc_promo');
+            window.location.href = data.redirect || '/cabinet/connections';
+        } catch (e) {
+            bcShowError(err, e.message);
+            act.disabled = false;
+        }
+    }
+
+    async function startTrial() {
+        const err = document.getElementById('err');
+        const btn = document.getElementById('trialBtn');
+        err.classList.remove('show');
+        btn.disabled = true;
+        try {
+            const data = await bcPost('/api/billing/trial', {});
+            window.location.href = data.redirect || '/cabinet';
+        } catch (e) {
+            bcShowError(err, e.message);
+            btn.disabled = false;
+        }
+    }
+
+    document.getElementById('promoCode').addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); applyPromo(); }
+    });
+</script>
+{% endblock %}

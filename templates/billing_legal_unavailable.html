@@ -1,0 +1,14 @@
+{% extends "billing_base.html" %}
+{% block title %}{% if document_type == 'privacy' %}Политика конфиденциальности{% elif document_type == 'terms' %}Условия использования{% else %}Юридическая информация{% endif %}{% endblock %}
+{% block footer %}{{ site_settings.title or 'TTVPN' }}{% endblock %}
+{% block content %}
+<div style="max-width:560px;margin:0 auto;">
+    <main class="bc-card" aria-labelledby="legal-title">
+        <h1 id="legal-title">{% if document_type == 'privacy' %}Политика конфиденциальности{% elif document_type == 'terms' %}Условия использования{% else %}Юридическая информация{% endif %}</h1>
+        <p>Документ подготавливается и пока не опубликован.</p>
+    </main>
+    <div class="bc-muted bc-center">
+        <a href="{{ landing_url or '/' }}">Вернуться на главную</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{% block title %}Личный кабинет{% endblock %} — {{ site_settings.title or 'TTVPN' }}</title>
+    {% if brand.ready %}
+    <link rel="icon" href="{{ brand.icon_url }}">
+    <link rel="apple-touch-icon" href="{{ brand.icon_url }}">
+    <meta property="og:image" content="{{ brand.logo_url }}">
+    {% else %}
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    {% endif %}
+    <meta name="theme-color" content="#0a0a0f">
+    <style>
+        :root { color-scheme: dark; --bc-accent: #3b82f6; --bc-accent-2: #6ea8fe; }
+        * { -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; background: #0a0a0f; color: #e7e7ee;
+               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+               line-height: 1.45; }
+        a { color: var(--bc-accent-2); }
+        .bc-wrap { max-width: 780px; margin: 0 auto; padding: 18px 16px 64px; }
+        .bc-top { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+                  padding: 6px 0 20px; flex-wrap: wrap; }
+        .bc-brand { display: flex; align-items: center; gap: 10px; color: #fff;
+                    text-decoration: none; font-weight: 700; font-size: 1.1rem; }
+        .bc-logo { width: 38px; height: 38px; object-fit: contain;
+                   background: transparent; border: 0; flex: 0 0 auto; }
+        .bc-logo--text { display: flex; align-items: center; justify-content: center;
+                         font-size: 1.15rem; }
+        .bc-links { display: flex; gap: 4px; align-items: center; font-size: .9rem;
+                    flex-wrap: wrap; }
+        .bc-links a { color: #9aa0b4; text-decoration: none; padding: 7px 11px;
+                      border-radius: 9px; }
+        .bc-links a:hover { color: #fff; background: #16161f; }
+        .bc-links a.active { color: #fff; background: #1c1c28; }
+        .bc-card { background: #14141c; border: 1px solid #262635; border-radius: 16px;
+                   padding: 20px; margin-bottom: 14px; }
+        .bc-card h1 { margin: 0 0 6px; font-size: 1.4rem; }
+        .bc-card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+        .bc-muted { color: #8b90a3; font-size: .9rem; }
+        .bc-field { margin-bottom: 14px; }
+        .bc-field label { display: block; font-size: .85rem; color: #aab0c4; margin-bottom: 6px; }
+        .bc-field input, .bc-field select { width: 100%; box-sizing: border-box; padding: 12px 14px;
+                          border-radius: 10px; border: 1px solid #2c2c3d; background: #0d0d14;
+                          color: #fff; font-size: 1rem; }
+        .bc-field input:focus, .bc-field select:focus { outline: none; border-color: #3b4a7a; }
+        .bc-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+                  padding: 10px 15px; border-radius: 10px; border: 0; cursor: pointer;
+                  background: var(--bc-accent); color: #fff; font-size: .92rem; font-weight: 600;
+                  text-decoration: none; font-family: inherit; }
+        .bc-btn:hover { background: #2f6fe0; }
+        .bc-btn.ghost { background: #1d1d29; border: 1px solid #333348; }
+        .bc-btn.ghost:hover { background: #262636; }
+        .bc-btn.sm { padding: 8px 12px; font-size: .85rem; border-radius: 9px; }
+        .bc-btn.danger { background: #7f1d1d; }
+        .bc-btn.danger:hover { background: #991b1b; }
+        .bc-btn[disabled] { opacity: .6; cursor: default; }
+        /* Telegram one-tap: a link that looks like the primary button. It is
+           an <a>, not a widget, so it needs no third-party script and no phone
+           number — the bot confirms the browser session by Telegram id. */
+        .bc-tgbtn { display: flex; width: 100%; box-sizing: border-box;
+                    background: #229ED9; color: #fff; text-decoration: none; }
+        .bc-tgbtn:hover { background: #1e8dc2; }
+        .bc-tgbtn svg { flex: 0 0 auto; }
+        .bc-status { display: flex; align-items: center; justify-content: center; gap: 10px;
+                     color: #aab0c4; font-size: .9rem; }
+        .bc-spinner { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto;
+                      border: 2px solid #2c3e6b; border-top-color: var(--bc-accent-2);
+                      animation: bc-spin .8s linear infinite; }
+        @keyframes bc-spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+            .bc-spinner { animation-duration: 2.4s; }
+        }
+        .bc-error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.4);
+                    color: #ff8080; padding: 10px 12px; border-radius: 10px; margin-bottom: 14px;
+                    font-size: .9rem; display: none; }
+        .bc-error.show { display: block; }
+        .bc-ok { background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.4);
+                 color: #6ee7a0; padding: 10px 12px; border-radius: 10px; margin-bottom: 14px;
+                 font-size: .9rem; display: none; }
+        .bc-ok.show { display: block; }
+        .bc-warn { background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3);
+                   color: #e8c766; padding: 10px 12px; border-radius: 10px; margin-bottom: 14px;
+                   font-size: .88rem; }
+        .bc-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .78rem;
+                    font-weight: 600; background: #22222f; color: #aab0c4; }
+        .bc-badge.ok { background: rgba(34,197,94,.15); color: #4ade80; }
+        .bc-badge.bad { background: rgba(239,68,68,.15); color: #f87171; }
+        .bc-plan { display: flex; justify-content: space-between; align-items: center; gap: 14px;
+                   padding: 15px 16px; border: 1px solid #2a2a3a; border-radius: 12px;
+                   margin-bottom: 10px; cursor: pointer; }
+        .bc-plan:hover { border-color: #3a3a52; }
+        .bc-plan.selected { border-color: var(--bc-accent); background: rgba(59,130,246,.06); }
+        .bc-plan b { display: block; font-size: 1rem; }
+        .bc-plan__right { display: flex; align-items: center; gap: 12px; }
+        .bc-price { font-size: 1.15rem; font-weight: 700; white-space: nowrap; }
+        .bc-price small { display: block; font-size: .72rem; font-weight: 400; color: #8b90a3;
+                          text-align: right; }
+        .bc-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0;
+                  border-bottom: 1px solid #22222f; font-size: .92rem; }
+        .bc-row:last-child { border-bottom: 0; }
+        .bc-sep { height: 1px; background: #262635; margin: 16px 0; }
+        .bc-center { text-align: center; }
+        .bc-footer { text-align: center; color: #6b7080; font-size: .8rem; margin-top: 26px; }
+        .bc-footer a { color: #8b90a3; }
+        .bc-trial { display: flex; justify-content: space-between; align-items: center;
+                    gap: 12px; padding: 14px 16px; margin: 4px 0 14px;
+                    border: 1px dashed #3b4a7a; border-radius: 12px;
+                    background: rgba(59,130,246,.08); flex-wrap: wrap; }
+        .bc-hint { color: #7d8296; font-size: .8rem; margin-top: 6px; }
+        .bc-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem;
+                   word-break: break-all; color: #9fb3d9; }
+        .bc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+        .bc-steps { counter-reset: step; }
+        .bc-step { display: flex; gap: 12px; padding: 9px 0; font-size: .92rem; }
+        .bc-step__n { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+                      background: #1d2440; color: var(--bc-accent-2); font-size: .78rem;
+                      font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .bc-hero { text-align: center; padding: 14px 4px 6px; }
+        .bc-hero img { width: 84px; height: 84px; object-fit: contain;
+                       margin-bottom: 14px; background: transparent; border: 0; }
+        .bc-hero h1 { font-size: 1.7rem; margin: 0 0 8px; }
+        .bc-hero p { color: #9aa0b4; margin: 0 auto 18px; max-width: 460px; }
+        .bc-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .bc-promo { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+        .bc-promo input { flex: 1 1 160px; text-transform: uppercase; }
+        /* ---- devices ---- */
+        .bc-device { border: 1px solid #2a2a3a; border-radius: 14px; margin-bottom: 12px;
+                     overflow: hidden; }
+        .bc-device__head { display: flex; justify-content: space-between; align-items: center;
+                           gap: 12px; padding: 14px 16px; flex-wrap: wrap; }
+        .bc-device__name { font-weight: 600; }
+        .bc-device__meta { color: #8b90a3; font-size: .82rem; margin-top: 2px; }
+        .bc-device__body { border-top: 1px solid #24243a; padding: 16px; display: none; }
+        .bc-device.open .bc-device__body { display: block; }
+        .bc-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+        .bc-tab { padding: 8px 14px; border-radius: 999px; border: 1px solid #2c2c3d;
+                  background: #13131b; color: #aab0c4; font-size: .85rem; cursor: pointer;
+                  font-family: inherit; }
+        .bc-tab.active { background: var(--bc-accent); border-color: var(--bc-accent); color: #fff; }
+        .bc-panel { display: none; }
+        .bc-panel.active { display: block; }
+        .bc-qr { background: #fff; padding: 12px; border-radius: 12px; width: fit-content;
+                 margin: 0 auto; min-height: 120px; display: flex; align-items: center;
+                 justify-content: center; }
+        .bc-config { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                     font-size: .76rem; line-height: 1.5; background: #0b0b12; border: 1px solid #24243a;
+                     border-radius: 10px; padding: 12px; max-height: 280px; overflow: auto;
+                     color: #c3c9dc; }
+        .bc-key { word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                  font-size: .78rem; background: #0b0b12; border: 1px solid #24243a;
+                  border-radius: 10px; padding: 12px; color: #9fb3d9; }
+        .bc-copyrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .bc-link { background: none; border: 0; color: var(--bc-accent-2); font: inherit;
+                   cursor: pointer; padding: 0; text-decoration: underline; }
+        .bc-link:hover { color: #9cc3ff; }
+        .bc-link[disabled] { color: #6b7080; cursor: default; text-decoration: none; }
+        /* ---- admin tables and form controls (billing-admin page) ---- */
+        .bc-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 6px; }
+        .bc-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+        .bc-table th { text-align: left; color: #8b90a3; font-weight: 600; font-size: .78rem;
+                       text-transform: uppercase; letter-spacing: .02em; padding: 8px 8px;
+                       border-bottom: 1px solid #262635; white-space: nowrap; }
+        .bc-table td { padding: 7px 8px; border-bottom: 1px solid #1e1e2b; vertical-align: middle; }
+        .bc-table tr:last-child td { border-bottom: 0; }
+        .bc-input, .bc-select { box-sizing: border-box; padding: 8px 10px; border-radius: 9px;
+                                border: 1px solid #2c2c3d; background: #0d0d14; color: #fff;
+                                font: inherit; font-size: .88rem; max-width: 100%; }
+        .bc-input:focus, .bc-select:focus { outline: none; border-color: #3b4a7a; }
+        .bc-table input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--bc-accent); }
+        /* ---- focus and motion ---- */
+        .bc-btn:focus-visible, .bc-tab:focus-visible, .bc-plan:focus-visible,
+        .bc-link:focus-visible, .bc-links a:focus-visible {
+            outline: 2px solid var(--bc-accent-2); outline-offset: 2px;
+        }
+        .bc-field input:focus-visible, .bc-field select:focus-visible,
+        .bc-input:focus-visible, .bc-select:focus-visible {
+            outline: 2px solid rgba(110,168,254,.45); outline-offset: 1px;
+        }
+        .bc-btn:active { transform: translateY(1px); }
+        .bc-btn[aria-busy="true"] { opacity: .7; pointer-events: none; }
+        @media (prefers-reduced-motion: no-preference) {
+            .bc-card { animation: bc-enter .5s ease-out both; }
+            .bc-top { animation: bc-enter .4s ease-out both; }
+            .bc-btn, .bc-plan, .bc-links a, .bc-op {
+                transition: background-color .2s ease, border-color .2s ease,
+                            box-shadow .2s ease, transform .2s ease;
+            }
+            .bc-btn:hover, .bc-plan:hover { transform: translateY(-2px); }
+            .bc-btn:hover { box-shadow: 0 8px 20px rgba(59,130,246,.22); }
+            .bc-btn:active { transform: translateY(1px); }
+            @keyframes bc-enter {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .bc-btn:active { transform: none; }
+        }
+        @media (max-width: 620px) { .bc-grid2 { grid-template-columns: 1fr; } }
+        @media (max-width: 620px) {
+            .bc-plan { flex-direction: column; align-items: stretch; }
+            .bc-plan__right { justify-content: space-between; }
+            .bc-wrap { padding: 12px 12px 48px; }
+            .bc-card { padding: 14px; border-radius: 14px; }
+            .bc-card h1 { font-size: 1.25rem; }
+            .bc-card h2 { font-size: 1.05rem; }
+            .bc-top { gap: 8px; padding-bottom: 14px; }
+            .bc-links a { padding: 6px 9px; font-size: .85rem; }
+            .bc-brand { font-size: 1rem; }
+            .bc-logo { width: 32px; height: 32px; border-radius: 9px; }
+            .bc-btn { padding: 10px 14px; font-size: .9rem; }
+            .bc-btn.sm { padding: 9px 12px; min-height: 36px; }
+            .bc-field input, .bc-field select { padding: 11px 12px; font-size: 1rem; }
+            .bc-trial { padding: 12px; }
+            .bc-hero { padding: 8px 0 4px; }
+            .bc-hero img { width: 72px; height: 72px; border-radius: 18px; }
+            .bc-hero h1 { font-size: 1.45rem; }
+            .bc-steps { font-size: .88rem; }
+            .bc-row { font-size: .88rem; padding: 8px 0; }
+            .bc-mono, .bc-key, .bc-config { font-size: .74rem; }
+            .bc-tabs { flex-wrap: wrap; }
+            .bc-tab { padding: 7px 11px; font-size: .8rem; }
+            .bc-qr { padding: 8px; }
+            .bc-qr canvas, .bc-qr img { max-width: 100% !important; height: auto !important; }
+            .bc-device__head { padding: 12px; }
+            .bc-device__body { padding: 12px; }
+            .bc-copyrow .bc-btn { flex: 1 1 auto; }
+        }
+        @media (max-width: 380px) {
+            .bc-wrap { padding: 10px 10px 40px; }
+            .bc-card { padding: 12px; }
+            .bc-top { flex-direction: column; align-items: flex-start; gap: 6px; }
+            .bc-links { width: 100%; justify-content: flex-start; }
+            .bc-hero h1 { font-size: 1.3rem; }
+            .bc-plan b { font-size: .95rem; }
+            .bc-price { font-size: 1.05rem; }
+        }
+        /* ---- operator photo on the left, full height, fixed ---- */
+        .bc-opbg { position: fixed; left: 0; top: 0; height: 100vh; z-index: 0;
+                   pointer-events: none; display: none; }
+        .bc-opbg img { height: 100vh; width: auto; max-width: 320px;
+                       object-fit: cover; object-position: top center; }
+        @media (min-width: 900px) { .bc-opbg { display: block; left: min(0px, calc((100vw - 1420px) / 2)); } }
+        .bc-wrap { position: relative; z-index: 1; }
+        @media (max-width: 899px) {
+            .bc-opbg { display: none; }
+        }
+        /* ---- motion ---- */
+        @view-transition { navigation: auto; }
+        :root {
+            --bc-ease: cubic-bezier(.22, 1, .36, 1);
+        }
+        .bc-card, .bc-device, .bc-plan, .bc-trial {
+            animation: bcFadeIn .32s var(--bc-ease) both;
+        }
+        @keyframes bcFadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .bc-card:nth-child(2) { animation-delay: .04s; }
+        .bc-card:nth-child(3) { animation-delay: .08s; }
+        .bc-card:nth-child(4) { animation-delay: .12s; }
+        .bc-btn, .bc-tab, .bc-link, .bc-plan {
+            transition: background-color .18s ease, border-color .18s ease,
+                        color .18s ease, transform .18s ease, box-shadow .18s ease,
+                        opacity .18s ease;
+        }
+        .bc-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+        .bc-btn:active { transform: translateY(1px); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+        .bc-plan:hover { transform: translateY(-1px); }
+        .bc-tab { transition: background-color .18s ease, color .18s ease,
+                  border-color .18s ease, transform .18s ease; }
+        .bc-tab:hover { transform: translateY(-1px); }
+        .bc-device.open .bc-device__body {
+            animation: bcSlideDown .22s var(--bc-ease);
+        }
+        @keyframes bcSlideDown {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .bc-device__head { transition: background-color .18s ease; }
+        .bc-row { transition: background-color .18s ease; }
+        .bc-op { transition: transform .2s var(--bc-ease), box-shadow .2s ease; }
+        .bc-op:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(0,0,0,.5); }
+        .bc-top a { transition: color .18s ease, background-color .18s ease; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+            @view-transition { navigation: none; }
+        }
+        /* Client cabinet shares the calm slate palette of the landing page. */
+        body.bc-client { background:#0c151c; }
+        .bc-client .bc-card, .bc-client .bc-device { background:#141e26; border-color:#303e48; }
+        .bc-client .bc-top { border-bottom:1px solid #293944; margin-bottom:20px; }
+        .bc-client .bc-field input, .bc-client .bc-field select { background:#101920; border-color:#344650; }
+        .bc-client .bc-btn.ghost, .bc-client .bc-tab { background:#1c2b35; border-color:#3a4b56; }
+        .bc-client .bc-row, .bc-client .bc-sep { border-color:#30404a; }
+        .bc-client .bc-card h1, .bc-client .bc-card h2 { letter-spacing:-.025em; }
+        /* ---- restrained infographics: metrics, meters, flow, bars ---- */
+        .bc-infographic { margin-top: 16px; }
+        .bc-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+                      gap: 10px; }
+        .bc-metric { display: flex; flex-direction: column; min-width: 0;
+                     padding: 14px 15px; border-radius: 12px;
+                     border: 1px solid #2f3d47; background: #111a21; }
+        .bc-metric__label { display: block; color: #93a6b2; font-size: .72rem; font-weight: 600;
+                            letter-spacing: .08em; text-transform: uppercase; }
+        .bc-metric__value { display: block; margin: 7px 0 2px; color: #edf6fb;
+                            font-size: 1.55rem; font-weight: 700; line-height: 1.1;
+                            letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+                            overflow-wrap: anywhere; }
+        .bc-metric__value small { font-size: .78rem; font-weight: 500; color: #93a6b2;
+                                  letter-spacing: 0; }
+        .bc-metric__note { display: block; margin-top: auto; color: #83969f;
+                           font-size: .78rem; }
+        /* Полоска — блочный элемент: у строчного span height игнорируется,
+           и он растягивает карточку вместе с подписью под ней. */
+        .bc-meter { display: block; height: 6px; margin-top: 10px; border-radius: 999px;
+                    background: #22313c; overflow: hidden; }
+        .bc-meter__fill { display: block; height: 100%; border-radius: inherit;
+                          width: var(--bc-meter, 0%);
+                          background: linear-gradient(90deg, #3f7fb8, #9fd0e6);
+                          transition: width .5s var(--bc-ease, ease); }
+        .bc-flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap;
+                   margin-top: 12px; }
+        .bc-flow__item { flex: 1 1 138px; min-width: 0; padding: 12px 13px;
+                         border: 1px solid #2f3d47; border-radius: 12px; background: #111a21; }
+        .bc-flow__n { display: inline-flex; width: 20px; height: 20px; border-radius: 50%;
+                      align-items: center; justify-content: center; background: #1d3142;
+                      color: #b9dcef; font-size: .72rem; font-weight: 700; }
+        .bc-flow__title { display: block; margin-top: 8px; font-size: .9rem; font-weight: 600; }
+        .bc-flow__note { display: block; margin-top: 3px; color: #8fa3af; font-size: .78rem; }
+        .bc-flow__arrow { flex: 0 0 auto; align-self: center; color: #7f9bab; font-size: 1rem; }
+        .bc-bar { display: grid; grid-template-columns: minmax(88px, 1.1fr) minmax(0, 2.2fr) auto;
+                  align-items: center; gap: 10px; padding: 7px 0; font-size: .86rem; }
+        .bc-bar__name { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                        white-space: nowrap; }
+        .bc-bar__track { height: 8px; border-radius: 999px; background: #1d2b35;
+                         overflow: hidden; }
+        .bc-bar__fill { display: block; height: 100%; border-radius: inherit;
+                        width: var(--bc-bar, 0%);
+                        background: linear-gradient(90deg, #3f7fb8, #9fd0e6); }
+        .bc-bar__value { white-space: nowrap; color: #dfeaf1; text-align: right;
+                         font-variant-numeric: tabular-nums; }
+        .bc-bar__value small { font-weight: 400; color: #8fa3af; }
+        @media (max-width: 620px) {
+            .bc-metrics { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+            .bc-metric { padding: 12px; }
+            .bc-metric__value { font-size: 1.32rem; }
+            .bc-flow { flex-direction: column; }
+            .bc-flow__arrow { transform: rotate(90deg); }
+            .bc-bar { grid-template-columns: 1fr auto; row-gap: 6px; }
+            .bc-bar__name { grid-column: 1; grid-row: 1; white-space: normal; }
+            .bc-bar__value { grid-column: 2; grid-row: 1; }
+            .bc-bar__track { grid-column: 1 / -1; grid-row: 2; }
+        }
+        @media (prefers-reduced-motion: no-preference) {
+            .bc-client .bc-scroll-reveal { animation:none; opacity:1; transform:none; transition:opacity .55s ease, transform .55s cubic-bezier(.22,1,.36,1); }
+            .bc-client .bc-scroll-reveal.is-scroll-pending { opacity:0; transform:translateY(20px); animation:none; }
+            .bc-client .bc-scroll-reveal:focus-within { opacity:1; transform:none; }
+        }
+    </style>
+    {# Same look as the panel: one palette, one type scale, one set of controls. #}
+    <link rel="stylesheet" href="/static/css/ttvpn-ui.css?v={{ static_v }}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="{% if brand.operator_ready %}bc-has-operator {% endif %}{% if not request.url.path.startswith('/billing-admin') %}bc-client{% endif %}">
+{% block shell %}
+<div class="bc-wrap">
+    <div class="bc-top">
+        <a class="bc-brand" href="{{ landing_url }}">
+            {% if brand.ready %}
+            <img class="bc-logo" src="{{ brand.logo_url }}" alt="{{ site_settings.title or 'TTVPN' }}">
+            {% else %}
+            {# The panel's appearance logo is a short text badge ("24"); that reads
+               as a number, not a brand, so anything alphanumeric falls back to
+               the shield until a real picture is uploaded. #}
+            {% if site_settings.logo and not site_settings.logo.isalnum() %}
+            <span class="bc-logo bc-logo--text">{{ site_settings.logo }}</span>
+            {% else %}
+            <span class="bc-logo bc-logo--text" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+            {% endif %}
+            {% endif %}
+            <span>{{ site_settings.title or 'TTVPN' }}</span>
+        </a>
+        <div class="bc-links">
+            {% if current_user or billing_user %}
+            <a href="/cabinet"{% if request.url.path == '/cabinet' %} class="active"{% endif %}>Кабинет</a>
+            <a href="/plans"{% if request.url.path == '/plans' %} class="active"{% endif %}>Тарифы</a>
+            <a href="/cabinet/connections"{% if request.url.path == '/cabinet/connections' %} class="active"{% endif %}>Подключения</a>
+            <a href="/cabinet/logout">Выйти</a>
+            {% else %}
+            <a href="/cabinet/login">Вход</a>
+            <a href="/register">Регистрация</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% block content %}{% endblock %}
+
+    <div class="bc-footer">
+        {% block footer %}{{ site_settings.title or 'TTVPN' }}{% endblock %}
+    </div>
+</div>
+{% endblock %}
+<script>
+    window.BILLING_CSRF = {{ csrf | tojson }};
+    async function bcPost(url, payload) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({ csrf: window.BILLING_CSRF }, payload || {}))
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) {}
+        if (!res.ok) {
+            const error = new Error(data.error || 'Ошибка запроса');
+            error.status = res.status;
+            error.payload = data;
+            throw error;
+        }
+        return data;
+    }
+    function bcShowError(el, message) {
+        if (!el) { alert(message); return; }
+        el.textContent = message;
+        el.classList.add('show');
+    }
+    function bcFlash(el, message) {
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+    }
+    async function bcCopy(text, btn) {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (e) {
+            const area = document.createElement('textarea');
+            area.value = text; document.body.appendChild(area);
+            area.select(); document.execCommand('copy'); area.remove();
+        }
+        if (btn) {
+            const label = btn.textContent;
+            btn.textContent = 'Скопировано';
+            setTimeout(() => { btn.textContent = label; }, 1400);
+        }
+    }
+    function bcDownload(text, filename) {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+    }
+    function bcFormatDate(date) {
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        return d + '.' + m + '.' + date.getFullYear();
+    }
+    function bcAddDays(iso, days) {
+        const base = iso ? new Date(iso) : new Date();
+        const next = new Date(base.getTime() + Number(days || 0) * 86400000);
+        return bcFormatDate(next);
+    }
+</script>
+{% block scripts %}{% endblock %}
+<script>
+    (function () {
+        if (!document.body.classList.contains('bc-client') || !('IntersectionObserver' in window) ||
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.remove('is-scroll-pending');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, {threshold: 0.08});
+        document.querySelectorAll('.bc-wrap > .bc-card, .bc-wrap > .bc-device, .bc-wrap > .bc-card > .bc-infographic').forEach(function (item) {
+            item.classList.add('bc-scroll-reveal');
+            if (item.getBoundingClientRect().top >= window.innerHeight) item.classList.add('is-scroll-pending');
+            observer.observe(item);
+        });
+    })();
+</script>
+{% if brand.operator_ready %}
+<div class="bc-opbg" aria-hidden="true">
+    <img src="{{ brand.operator_url }}" alt="">
+</div>
+{% endif %}
+</body>
+</html>

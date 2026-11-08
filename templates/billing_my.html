@@ -1,0 +1,533 @@
+{% extends "billing_base.html" %}
+{% block title %}Мои подключения{% endblock %}
+{% block head_extra %}
+<style>
+    /* One registered device per plan slot; its protocol profiles are nested. */
+    .bc-device-group {
+        border: 1px solid var(--bc-line, rgba(148, 163, 184, .22));
+        border-radius: 14px;
+        padding: 14px 14px 4px;
+        margin-bottom: 16px;
+        background: var(--bc-surface, rgba(255, 255, 255, .02));
+    }
+    .bc-device-group__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+    .bc-device-group .bc-device {
+        border: none;
+        border-top: 1px solid var(--bc-line, rgba(148, 163, 184, .16));
+        border-radius: 0;
+        margin: 0 0 8px;
+        padding: 10px 0 0;
+        background: transparent;
+    }
+    .bc-device-group .bc-device:first-of-type { border-top: none; padding-top: 0; }
+    .bc-profile-add {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .bc-profile-add select {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--bc-line, rgba(148, 163, 184, .28));
+        background: var(--bc-input-bg, rgba(15, 23, 42, .35));
+        color: inherit;
+        font: inherit;
+        max-width: 220px;
+    }
+    @media (max-width: 640px) {
+        .bc-device-group { padding: 12px 10px 2px; }
+        .bc-profile-add { width: 100%; }
+        .bc-profile-add select { flex: 1 1 auto; min-width: 0; max-width: none; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="bc-card">
+    <h1>Мои подключения</h1>
+    <p class="bc-muted" style="margin-top:0;">
+        Здесь ключ <span class="bc-mono">vpn://</span>, QR-код и файл конфигурации —
+        всё, что нужно приложению Amnezia.
+    </p>
+    <div class="bc-row">
+        <span>Подписка</span>
+        <span>
+            {% if active %}<span class="bc-badge ok">активна до {{ expiry }}</span>
+            {% else %}<span class="bc-badge bad">не активна</span>{% endif %}
+        </span>
+    </div>
+    <div class="bc-row"><span>Устройств</span>
+        <span>{{ devices|length }}{% if device_limit > devices|length %} из {{ device_limit }} по тарифу{% endif %}</span>
+    </div>
+
+    <div class="bc-sep"></div>
+    <div class="bc-steps">
+        <div class="bc-step"><span class="bc-step__n">1</span>
+            <span>Установите приложение <a href="https://amnezia.org/ru/downloads" target="_blank"
+                rel="noopener">Amnezia</a> (Windows, macOS, Android, iOS).</span></div>
+        <div class="bc-step"><span class="bc-step__n">2</span>
+            <span>Нажмите «Открыть в Amnezia» — ключ скопируется, и приложение откроется
+                (автоматически это работает в Amnezia на Android). Либо нажмите «Показать QR»
+                и отсканируйте код камерой телефона, либо вставьте скопированный ключ
+                вручную: «＋» → «Вставить из буфера».</span></div>
+        <div class="bc-step"><span class="bc-step__n">3</span>
+            <span>Готово — включите подключение в приложении.</span></div>
+    </div>
+    <div class="bc-error" id="err"></div>
+    {% if not active %}
+    <div class="bc-warn">
+        Подписка не оплачена или истекла — подключения не работают.
+        <a href="/plans">Выбрать тариф</a>.
+    </div>
+    {% endif %}
+</div>
+
+{% if not devices %}
+<div class="bc-card bc-center">
+    <div class="tt-empty__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7.5l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7.5l1.2-1.2"/></svg></div>
+    {% if active %}
+    <h2>Устройство ещё не создано</h2>
+    <p class="bc-muted">
+        Подписка активна до {{ expiry }}, но устройство не появилось.
+        Попробуйте создать его ещё раз — это безопасно и не расходует оплаченные дни.
+    </p>
+    <div class="bc-actions" style="justify-content:center;">
+        <button class="bc-btn" type="button" onclick="retryDevices(this)">Создать устройство</button>
+        <a class="bc-btn ghost" href="/plans">Тарифы и продление</a>
+    </div>
+    <p class="bc-muted" id="syncNote" style="margin-top:12px;">
+        Если устройство не появилось, напишите в поддержку — оплаченный период сохраняется.
+    </p>
+    {% else %}
+    <h2>Устройств пока нет</h2>
+    <p class="bc-muted">
+        После оплаты тарифа устройство и ключ появятся здесь автоматически.
+    </p>
+    <a class="bc-btn" href="/plans">Выбрать тариф</a>
+    {% endif %}
+</div>
+{% else %}
+{% for device in devices %}
+<div class="bc-device-group" data-device-group="{{ device.id }}" data-name="{{ device.name }}">
+    <div class="bc-device-group__head">
+        <div>
+            <div class="bc-device__name" data-device-name>{{ device.name }}</div>
+            <div class="bc-device__meta">
+                {{ device.connections|length }}
+                {{ 'подключение' if device.connections|length == 1 else 'подключения' }}
+                · одно место в лимите устройств
+            </div>
+        </div>
+        <button class="bc-btn sm ghost" type="button" onclick="renameDevice(this)">Назвать</button>
+        {% if active and device.protocol_options and device.connections|length < device.profiles_max %}
+        <form class="bc-profile-add" onsubmit="return addProfile(event, this)">
+            <select name="protocol" aria-label="Протокол нового профиля">
+                {% for option in device.protocol_options %}
+                <option value="{{ option.id }}">{{ option.label }}</option>
+                {% endfor %}
+            </select>
+            <button class="bc-btn sm ghost" type="submit">Добавить профиль</button>
+        </form>
+        {% endif %}
+    </div>
+    {% for device_conn in device.connections %}
+    <div class="bc-device" data-device="{{ device_conn.id }}"
+         data-name="{{ device_conn.name }}" data-protocol="{{ device_conn.protocol }}">
+        <div class="bc-device__head">
+            <div>
+                <div class="bc-device__name">{{ device_conn.protocol_label or device_conn.protocol }}</div>
+                <div class="bc-device__meta">
+                    {% if device_conn.server_name %}{{ device_conn.server_name }}{% endif %}
+                    {% if device.connections|length > 1 %} · подключение {{ loop.index }}{% endif %}
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="bc-btn sm" type="button" onclick="toggleDevice(this, 'qr')">
+                    Показать QR
+                </button>
+                <button class="bc-btn sm ghost" type="button" onclick="toggleDevice(this, 'key')">
+                    Ключ
+                </button>
+                {# Кнопка «Открыть в Amnezia» имеет смысл только там, где ключ
+                   импортируемый: клиент Amnezia регистрирует схему vpn:// в
+                   системе только на Android, остальные платформы схему не
+                   обрабатывают. #}
+                {% set proto_base = (device_conn.protocol or '').split('__')[0] %}
+                {% if proto_base in ['awg', 'awg2', 'awg3', 'awg_legacy', 'xray'] %}
+                <button class="bc-btn sm ghost" type="button" data-open-app onclick="openInAmnezia(this)">
+                    Открыть в Amnezia
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        <div class="bc-device__body">
+            <div class="bc-hint" data-app-hint hidden style="margin-bottom:10px;"></div>
+            <div class="bc-tabs">
+                <button class="bc-tab" type="button" data-tab="qr" onclick="switchTab(this, 'qr')">QR-код</button>
+                <button class="bc-tab" type="button" data-tab="key" onclick="switchTab(this, 'key')">Ключ vpn://</button>
+                <button class="bc-tab" type="button" data-tab="conf" onclick="switchTab(this, 'conf')">Файл конфигурации</button>
+            </div>
+            <div class="bc-panel" data-panel="qr">
+                <div class="bc-qr" data-qr></div>
+                <div class="bc-hint bc-center" data-qr-hint style="margin-top:10px;"></div>
+            </div>
+            <div class="bc-panel" data-panel="key">
+                <div class="bc-key" data-key>Загрузка…</div>
+                <div class="bc-copyrow">
+                    <button class="bc-btn sm" type="button" onclick="copyKey(this)">Скопировать ключ</button>
+                </div>
+                <div class="bc-hint">
+                    Amnezia: «＋» → «Вставить из буфера обмена».
+                </div>
+            </div>
+            <div class="bc-panel" data-panel="conf">
+                <div class="bc-config" data-conf>Загрузка…</div>
+                <div class="bc-copyrow">
+                    <button class="bc-btn sm" type="button" onclick="copyConf(this)">Скопировать</button>
+                    <button class="bc-btn sm ghost" type="button" onclick="downloadConf(this)">
+                        Скачать .conf
+                    </button>
+                </div>
+            </div>
+            <div class="bc-error" data-device-err style="margin-top:12px;"></div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/qrcode.min.js"></script>
+<script>
+    // The server-rendered list carries names and protocols; the actual config
+    // is fetched per device, because building it opens an SSH session and a
+    // page that waits for three of them feels broken.
+    const devices = Array.from(document.querySelectorAll('[data-device]'));
+    const loaded = new Map();
+    const QR_FRAME_MS = 900;
+    let qrTimer = null;
+
+    async function renameDevice(button) {
+        const group = button.closest('[data-device-group]');
+        const name = prompt('Название устройства, например «Телефон» или «Ноутбук»:', group.dataset.name || '');
+        if (name === null) return;
+        button.disabled = true;
+        try {
+            const data = await bcPost('/api/billing/devices/' + encodeURIComponent(group.dataset.deviceGroup) + '/name', {name: name});
+            group.dataset.name = data.name;
+            group.querySelector('[data-device-name]').textContent = data.name;
+        } catch (e) {
+            alert(e.message);
+        } finally { button.disabled = false; }
+    }
+
+    async function addProfile(event, form) {
+        event.preventDefault();
+        const group = form.closest('[data-device-group]');
+        const button = form.querySelector('button[type="submit"]');
+        const select = form.querySelector('select[name="protocol"]');
+        button.disabled = true;
+        try {
+            // The new profile gets its own QR and key, so the page has to be
+            // rebuilt; the server decides which protocols are still available.
+            await bcPost('/api/billing/devices/' + encodeURIComponent(group.dataset.deviceGroup) + '/profiles',
+                         { protocol: select.value });
+            window.location.reload();
+        } catch (e) {
+            alert(e.message);
+            button.disabled = false;
+        }
+        return false;
+    }
+
+    function deviceEl(id) {
+        return document.querySelector('[data-device="' + id + '"]');
+    }
+
+    async function loadDevice(id) {
+        if (loaded.has(id)) return loaded.get(id);
+        const el = deviceEl(id);
+        const box = el.querySelector('[data-device-err]');
+        box.classList.remove('show');
+        box.textContent = '';
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        try {
+            // Billing-owned endpoint: it resolves the owner from the cabinet
+            // session, so it cannot drift from the account this list belongs to.
+            const res = await fetch('/api/billing/connections/' + encodeURIComponent(id) + '/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ csrf: window.BILLING_CSRF }),
+                signal: controller.signal
+            });
+            clearTimeout(timer);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                if (res.status === 401) {
+                    const e = new Error('Сессия истекла — войдите заново');
+                    e.relogin = true;
+                    throw e;
+                }
+                if (res.status === 404) {
+                    throw new Error('Устройство не найдено в вашем аккаунте. ' +
+                        'Обновите страницу — список мог устареть.');
+                }
+                if (res.status === 429) throw new Error('Слишком много запросов — подождите минуту');
+                throw new Error(data.error || 'Сервер не отдал конфигурацию — попробуйте ещё раз');
+            }
+            el.querySelector('[data-key]').textContent = data.vpn_link || '—';
+            el.querySelector('[data-conf]').textContent = data.config || '';
+            // Telemt (and any protocol without an Amnezia key) has no vpn://
+            // link; showing an empty tab only confuses people.
+            if (!data.vpn_link) {
+                const keyTab = el.querySelector('[data-tab="key"]');
+                if (keyTab) keyTab.style.display = 'none';
+                if (el.querySelector('.bc-panel.active')?.dataset.panel === 'key') {
+                    switchTab(el.querySelector('[data-tab="conf"]'), 'conf');
+                }
+            }
+            loaded.set(id, data);
+            return data;
+        } catch (e) {
+            clearTimeout(timer);
+            const msg = e.name === 'AbortError' ? 'Сервер не ответил — попробуйте ещё раз' : e.message;
+            const action = e.relogin
+                ? '<a class="bc-btn sm" style="margin-left:8px;" ' +
+                  'href="/cabinet/login?next=%2Fcabinet%2Fconnections">Войти</a>'
+                : '<button type="button" class="bc-btn sm ghost" ' +
+                  'style="margin-left:8px;" onclick="retryDevice(this)">Повторить</button>';
+            box.innerHTML = msg + ' ' + action;
+            box.classList.add('show');
+            throw new Error(msg);
+        }
+    }
+
+    function drawQr(data, targetEl) {
+        const hint = targetEl.closest('.bc-panel').querySelector('[data-qr-hint]');
+        stopQr();
+        const chunks = (data.vpn_qr_chunks || []).filter(Boolean);
+        const render = (text, extra) => {
+            targetEl.innerHTML = '';
+            try {
+                new QRCode(targetEl, {
+                    text: text, width: 260, height: 260,
+                    colorDark: '#000000', colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.L
+                });
+            } catch (e) {
+                targetEl.innerHTML = '<span style="color:#333;font-size:.8rem;">Ошибка QR</span>';
+            }
+            hint.textContent = extra || '';
+        };
+        if (!chunks.length) {
+            render(data.config || data.vpn_link || '');
+            return;
+        }
+        let frame = 0;
+        const paint = () => render(
+            chunks[frame],
+            chunks.length > 1
+                ? 'Кадр ' + (frame + 1) + ' из ' + chunks.length + ' — держите камеру до конца'
+                : 'Отсканируйте код камерой телефона'
+        );
+        paint();
+        if (chunks.length > 1) {
+            qrTimer = setInterval(() => {
+                frame = (frame + 1) % chunks.length;
+                paint();
+            }, QR_FRAME_MS);
+        }
+    }
+
+    function stopQr() {
+        if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
+    }
+
+    function switchTab(button, name) {
+        const el = button.closest('[data-device]');
+        el.querySelectorAll('.bc-tab').forEach(t => t.classList.toggle('active', t === button));
+        el.querySelectorAll('.bc-panel').forEach(p =>
+            p.classList.toggle('active', p.dataset.panel === name));
+        if (name === 'qr') { renderQrFor(el); }
+        else { stopQr(); loadDevice(el.dataset.device).catch(() => {}); }
+    }
+
+    async function renderQrFor(el) {
+        const id = el.dataset.device;
+        const target = el.querySelector('[data-qr]');
+        target.innerHTML = '<span style="color:#333;font-size:.8rem;">Готовим QR…</span>';
+        try {
+            const data = await loadDevice(id);
+            drawQr(data, target);
+        } catch (e) {
+            target.innerHTML = '<span style="color:#333;font-size:.8rem;">Ошибка</span>';
+        }
+    }
+
+    async function openDevice(el, tab) {
+        devices.forEach(d => { if (d !== el) d.classList.remove('open'); });
+        stopQr();
+        el.classList.add('open');
+        const button = Array.from(el.querySelectorAll('.bc-tab')).find(b => b.dataset.tab === tab)
+            || el.querySelector('.bc-tab');
+        if (button) switchTab(button, tab);
+    }
+
+    function retryDevice(btn) {
+        const el = btn.closest('[data-device]');
+        const box = el.querySelector('[data-device-err]');
+        box.classList.remove('show');
+        box.innerHTML = '';
+        loaded.delete(el.dataset.device);
+        const active = el.querySelector('.bc-panel.active');
+        if (active && active.dataset.panel === 'qr') renderQrFor(el);
+        else loadDevice(el.dataset.device).catch(() => {});
+    }
+
+    function toggleDevice(btn, tab) {
+        const el = btn.closest('[data-device]');
+        if (el.classList.contains('open') &&
+            el.querySelector('.bc-panel.active')?.dataset.panel === tab) {
+            el.classList.remove('open');
+            stopQr();
+            return;
+        }
+        openDevice(el, tab);
+    }
+
+    function copyKey(btn) {
+        const el = btn.closest('[data-device]');
+        bcCopy(el.querySelector('[data-key]').textContent, btn);
+    }
+
+    // Открытие ключа в приложении Amnezia.
+    //
+    // Ключ vpn://<base64> — это и есть deep link: клиент Amnezia разбирает его
+    // при импорте. Но схему vpn:// клиент регистрирует в системе только на
+    // Android (AndroidManifest.xml, ImportConfigActivity). На iOS, macOS,
+    // Windows и Linux регистрации нет (issue #1067 всё ещё открыт), поэтому
+    // там открывать нечего — вместо ложного «приложение откроется» кладём
+    // ключ в буфер и прямо говорим, что делать.
+    //
+    // Копирование выполняется ДО попытки открытия: если ОС переключится на
+    // приложение или заблокирует переход, ключ уже будет в буфере, и вставка
+    // «＋» → «Вставить из буфера» останется рабочим путём.
+    async function openInAmnezia(btn) {
+        const el = btn.closest('[data-device]');
+        const hint = el.querySelector('[data-app-hint]');
+        const say = (text) => {
+            if (!hint) return;
+            hint.textContent = text;
+            hint.hidden = false;
+        };
+        btn.disabled = true;
+        try {
+            let data;
+            try {
+                data = await loadDevice(el.dataset.device);
+            } catch (e) {
+                say('Не удалось получить ключ: ' + e.message);
+                return;
+            }
+            const link = (data.vpn_link || '').trim();
+            if (!link || data.vpn_importable === false) {
+                say('Для этого подключения нет импортируемого ключа Amnezia. ' +
+                    'Используйте файл конфигурации или QR-код.');
+                return;
+            }
+            await bcCopy(link, null);
+            if (/Android/i.test(navigator.userAgent)) {
+                say('Ключ скопирован. Открываем Amnezia — если приложение не запустилось, ' +
+                    'нажмите «＋» → «Вставить из буфера».');
+                // Переход по схеме: если обработчик зарегистрирован, ОС
+                // переключится на Amnezia; если нет — страница останется как была.
+                try { window.location.href = link; } catch (e) { /* игнорируем */ }
+            } else {
+                say('Ключ скопирован. На этой платформе Amnezia не регистрирует ссылки vpn://, ' +
+                    'поэтому откройте приложение вручную: «＋» → «Вставить из буфера обмена». ' +
+                    'Автоматическое открытие по ссылке работает только в приложении Amnezia на Android.');
+            }
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function copyConf(btn) {
+        const el = btn.closest('[data-device]');
+        bcCopy(el.querySelector('[data-conf]').textContent, btn);
+    }
+
+    function downloadConf(btn) {
+        const el = btn.closest('[data-device]');
+        const name = (el.dataset.name || 'vpn').replace(/[^\w.-]+/g, '_');
+        bcDownload(el.querySelector('[data-conf]').textContent, name + '.conf');
+    }
+
+    // Ручной повтор создания устройства: не зависит от отметки в sessionStorage,
+    // которую ставит автоматическая попытка при открытии страницы.
+    async function retryDevices(btn) {
+        const note = document.getElementById('syncNote');
+        const label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Создаём…';
+        if (note) note.textContent = 'Отправляем запрос…';
+        try {
+            const response = await fetch('/api/billing/devices/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ csrf: window.BILLING_CSRF })
+            });
+            const payload = response.ok ? await response.json() : null;
+            if (payload && payload.restored > 0) {
+                location.reload();
+                return;
+            }
+            if (note) {
+                note.textContent = response.ok
+                    ? 'Устройство пока не создалось. Подождите минуту и попробуйте снова или напишите в поддержку — оплаченный период сохраняется.'
+                    : 'Сервер не смог создать устройство. Попробуйте позже или напишите в поддержку.';
+            }
+        } catch (error) {
+            if (note) note.textContent = 'Нет связи с сервером. Проверьте подключение и попробуйте снова.';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = label;
+        }
+    }
+
+    (function () {
+        {% if active %}
+        // A paid order whose device creation failed (SSH down, restart) is
+        // retried once per session instead of leaving the client without keys.
+        if (!sessionStorage.getItem('bc-device-sync')) {
+            sessionStorage.setItem('bc-device-sync', '1');
+            fetch('/api/billing/devices/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ csrf: window.BILLING_CSRF })
+            }).then(r => r.ok ? r.json() : null).then(d => {
+                if (d && d.restored > 0) location.reload();
+            }).catch(() => {});
+        }
+        {% endif %}
+        const params = new URLSearchParams(location.search);
+        const wanted = params.get('device');
+        const tab = params.get('tab') === 'key' ? 'key'
+            : (params.get('tab') === 'conf' ? 'conf' : 'qr');
+        const target = (wanted && deviceEl(wanted)) || (devices.length === 1 ? devices[0] : null);
+        if (target) openDevice(target, tab);
+    })();
+</script>
+{% endblock %}

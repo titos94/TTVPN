@@ -1,0 +1,1105 @@
+{% extends "base.html" %}
+{% block title_extra %} — Биллинг{% endblock %}
+{% block page_class %}page page--billing{% endblock %}
+{% block head_extra %}
+<style>
+    /* Биллинг живёт в том же каркасе, что «Пользователи» и «Настройки»:
+       одна шапка страницы, разделы-вкладки, плотные таблицы и формы. */
+    .page--billing .tt-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-card);
+        padding: 20px;
+    }
+
+    .page--billing .tt-section__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+
+    .page--billing .tt-section__title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: var(--text-primary);
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    .page--billing .tt-section__note {
+        margin: 6px 0 0;
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    .page--billing .tt-subsection {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .page--billing .tt-subsection .tt-section__title {
+        font-size: 15px;
+    }
+
+    /* Как в настройках: список слева, на телефоне — горизонтальная лента. */
+    .page--billing .billing-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
+    }
+
+    .page--billing .billing-sidebar { align-self: stretch; min-width: 0; }
+    .page--billing .billing-main { min-width: 0; }
+    .page--billing .tt-panel + .tt-panel { margin-top: 16px; }
+    html.tt-tabs-ready .page--billing .tt-panel + .tt-panel { margin-top: 0; }
+
+    .page--billing .tt-tabs {
+        position: sticky;
+        top: 16px;
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        gap: 2px;
+        margin: 0;
+        padding: 0;
+    }
+
+    .page--billing .tt-tab {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border: 1px solid transparent;
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.3;
+        text-decoration: none;
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .page--billing .tt-tab:hover {
+        background: var(--bg-card-hover);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+
+    .page--billing .tt-tab.active {
+        background: var(--accent-surface);
+        border-color: var(--accent);
+        color: var(--accent-light);
+    }
+
+    html[data-theme="light"] .page--billing .tt-tab.active {
+        color: var(--accent);
+    }
+
+    @media (max-width: 900px) {
+        .page--billing .billing-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+        .page--billing .billing-sidebar {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            align-self: start;
+            padding: 8px 0;
+            background: var(--bg-primary);
+        }
+        .page--billing .tt-tabs {
+            position: static;
+            flex-direction: row;
+            gap: 6px;
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .page--billing .tt-tabs::-webkit-scrollbar { display: none; }
+        .page--billing .tt-tab {
+            padding: 7px 12px;
+            border-color: var(--border-color);
+            background: var(--bg-card);
+            white-space: nowrap;
+        }
+        .page--billing .tt-tab.active { background: var(--accent-surface); border-color: var(--accent); }
+    }
+
+    /* Без JS разделы остаются видимыми: вкладки только уплотняют страницу. */
+    html.tt-tabs-ready .page--billing .tt-panel {
+        display: none;
+    }
+
+    html.tt-tabs-ready .page--billing .tt-panel.is-active {
+        display: block;
+    }
+
+    /* --- сводка --- */
+    .page--billing .tt-summary {
+        margin-bottom: var(--space-lg);
+    }
+
+    .page--billing .tt-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 28px;
+    }
+
+    .page--billing .tt-summary-item {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        min-width: 0;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .page--billing .tt-summary-key {
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    .page--billing .tt-summary-value {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        min-width: 0;
+        color: var(--text-primary);
+        font-size: 13px;
+        text-align: right;
+    }
+
+    .page--billing .tt-summary-value small {
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .page--billing .tt-webhook {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border-color);
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    /* --- формы --- */
+    .page--billing .tt-form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 var(--space-md);
+    }
+
+    .page--billing .tt-field {
+        min-width: 0;
+        margin-bottom: var(--space-md);
+    }
+
+    .page--billing .tt-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin: 4px 0 14px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.45;
+        cursor: pointer;
+    }
+
+    .page--billing .tt-check input {
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        margin-top: 1px;
+        accent-color: var(--accent);
+    }
+
+    .page--billing .tt-actions-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+    }
+
+    /* --- сообщения --- */
+    .page--billing .tt-alert {
+        display: none;
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .page--billing .tt-alert.show {
+        display: block;
+    }
+
+    .page--billing .tt-alert--error {
+        background: var(--danger-bg);
+        border: 1px solid var(--danger-border);
+        color: var(--danger);
+    }
+
+    .page--billing .tt-alert--ok {
+        background: var(--success-bg);
+        border: 1px solid var(--success-border);
+        color: var(--success);
+    }
+
+    .page--billing .tt-warn {
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        border-radius: var(--radius-md);
+        background: var(--warning-bg);
+        color: var(--warning);
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .page--billing .tt-muted {
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .page--billing .tt-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: var(--text-secondary);
+        word-break: break-all;
+    }
+
+    .page--billing .tt-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .page--billing .tt-text-danger {
+        color: var(--danger);
+    }
+
+    /* --- таблицы --- */
+    .page--billing .tt-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-card);
+    }
+
+    .page--billing .tt-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .page--billing .tt-table th {
+        padding: 10px 12px;
+        text-align: left;
+        white-space: nowrap;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .page--billing .tt-table td {
+        padding: 9px 12px;
+        vertical-align: middle;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .page--billing .tt-table tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .page--billing .tt-table .tt-num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .page--billing .tt-table .tt-actions {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .page--billing .tt-table td.tt-empty {
+        padding: 34px 16px;
+        text-align: center;
+        color: var(--text-muted);
+    }
+
+    .page--billing .tt-table td.tt-row-note {
+        padding-top: 0;
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .page--billing .tt-table .form-input,
+    .page--billing .tt-table .form-select {
+        padding: 7px 10px;
+        font-size: 13px;
+    }
+
+    .page--billing .tt-input-num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .page--billing .tt-input-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        text-transform: uppercase;
+    }
+
+    .page--billing .tt-table--plans {
+        min-width: 860px;
+    }
+
+    .page--billing .tt-table--promos {
+        min-width: 900px;
+    }
+
+    .page--billing .tt-table--payments {
+        min-width: 640px;
+    }
+
+    /* --- превью картинок --- */
+    .page--billing .tt-media {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+
+    .page--billing .tt-media__preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 72px;
+        height: 72px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-input);
+        color: var(--text-muted);
+    }
+
+    .page--billing .tt-media__preview--round {
+        border-radius: 50%;
+    }
+
+    .page--billing .tt-media__preview img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .page--billing .tt-media__note {
+        flex: 1 1 220px;
+        min-width: 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    @media (max-width: 700px) {
+        .page--billing .tt-form-grid,
+        .page--billing .tt-summary-grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .page--billing .tt-section {
+            padding: 16px;
+            border-radius: var(--radius-md);
+        }
+
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="tt-eyebrow">Панель управления</div>
+        <h1 class="section-title page-header__title">
+            <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                    <line x1="2" y1="10" x2="22" y2="10" />
+                </svg></span>
+            Биллинг
+        </h1>
+        <p class="page-header__subtitle">Ключи кассы, тарифы, промокоды и пробный период. Изменения применяются сразу,
+            перезапуск не нужен.</p>
+    </div>
+    <div class="page-header__actions">
+        <a class="btn btn-secondary" href="https://admin.ttvpn.ru/">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right: 6px;">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+            </svg>
+            В панель
+        </a>
+        <a class="btn btn-secondary" href="/logout">Выйти</a>
+    </div>
+</div>
+
+<section class="tt-section tt-summary" aria-labelledby="billing-summary-title">
+    <div class="tt-section__head">
+        <div>
+            <h2 class="tt-section__title" id="billing-summary-title">Сводка</h2>
+            <p class="tt-section__note">Состояние кассы, входа и подтверждения адреса</p>
+        </div>
+    </div>
+    <div class="tt-summary-grid">
+        <div class="tt-summary-item">
+            <span class="tt-summary-key">ЮKassa</span>
+            <span class="tt-summary-value">
+                {% if settings.yookassa_ready %}<span class="badge badge-success">ключи заданы</span>
+                {% else %}<span class="badge badge-danger">не настроено</span>{% endif %}
+                {% if settings.mock %}<span class="badge badge-danger">тестовый режим</span>{% endif %}
+            </span>
+        </div>
+        <div class="tt-summary-item">
+            <span class="tt-summary-key">Пробный период</span>
+            <span class="tt-summary-value">
+                {% if settings.trial_enabled and settings.trial_days > 0 %}
+                <span class="badge badge-success">{{ settings.trial_days }} дн.</span>
+                {% else %}<span class="badge badge-secondary">выключен</span>{% endif %}
+                <small>всего {{ trials.total }}, за 30 дней {{ trials.last30 }}</small>
+            </span>
+        </div>
+        <div class="tt-summary-item">
+            <span class="tt-summary-key">Клиентов с регистрацией</span>
+            <span class="tt-summary-value">{{ users_stats.managed }} <small>активных {{ users_stats.active }}</small></span>
+        </div>
+        <div class="tt-summary-item">
+            <span class="tt-summary-key">Оплаченных платежей</span>
+            <span class="tt-summary-value">{{ summary.paid_count }} на {{ summary.revenue_rub }} ₽
+                {% if summary.free_count %}<small>{{ summary.free_count }} бесплатных</small>{% endif %}</span>
+        </div>
+        <div class="tt-summary-item">
+            <span class="tt-summary-key">Ожидают оплаты</span>
+            <span class="tt-summary-value">{{ summary.pending_count }}</span>
+        </div>
+    </div>
+    <div class="tt-webhook">
+        Webhook для событий оплаты настраивается в общих настройках, раздел «ЮKassa».
+    </div>
+</section>
+
+<div class="billing-layout">
+<div class="billing-sidebar" hidden>
+<nav class="tt-tabs" aria-label="Разделы биллинга">
+    <a class="tt-tab" href="#plans">Тарифы</a>
+    <a class="tt-tab" href="#promos">Промокоды</a>
+    <a class="tt-tab" href="#trial">Пробный период</a>
+    <a class="tt-tab" href="#payments">Платежи</a>
+</nav>
+</div>
+<div class="billing-main">
+
+<div class="tt-panel" id="plans">
+    <section class="tt-section" aria-labelledby="plans-title">
+        <div class="tt-section__head">
+            <div>
+                <h2 class="tt-section__title" id="plans-title">Тарифы</h2>
+                <p class="tt-section__note">Цена, срок и число устройств для каждого тарифа</p>
+            </div>
+        </div>
+        <div class="tt-alert tt-alert--error" id="errPlans"></div>
+        <div class="tt-alert tt-alert--ok" id="okPlans"></div>
+        {% if plans %}
+        <div class="tt-table-wrap">
+            <table class="tt-table tt-table--plans">
+                <thead>
+                    <tr>
+                        <th scope="col">Название</th>
+                        <th scope="col" class="tt-num">Цена, ₽</th>
+                        <th scope="col" class="tt-num">Дней</th>
+                        <th scope="col" class="tt-num">Устр.</th>
+                        <th scope="col">Сервер · протокол</th>
+                        <th scope="col" class="tt-num">Сорт.</th>
+                        <th scope="col">Активен</th>
+                        <th scope="col"><span class="tt-sr-only">Действия</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for plan in plans %}
+                    <tr>
+                        <td><input class="form-input" id="n-{{ plan.id }}" value="{{ plan.name }}"
+                                style="min-width: 130px;"></td>
+                        <td class="tt-num"><input class="form-input tt-input-num" id="p-{{ plan.id }}"
+                                value="{{ '%g'|format(plan.price_kopecks / 100) }}" style="width: 90px;"></td>
+                        <td class="tt-num"><input class="form-input tt-input-num" id="d-{{ plan.id }}"
+                                value="{{ plan.days }}" style="width: 70px;"></td>
+                        <td class="tt-num"><input class="form-input tt-input-num" id="l-{{ plan.id }}"
+                                value="{{ plan.device_limit }}" style="width: 60px;"></td>
+                        <td>
+                            <select class="form-select" id="t-{{ plan.id }}">
+                                <option value="" {% if not plan.target_value %}selected{% endif %}>по умолчанию</option>
+                                {% for target in targets %}
+                                <option value="{{ target.value }}" {% if target.value == plan.target_value %}selected{% endif %}>{{ target.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="tt-num"><input class="form-input tt-input-num" id="s-{{ plan.id }}"
+                                value="{{ plan.sort }}" style="width: 60px;"></td>
+                        <td><input type="checkbox" id="a-{{ plan.id }}" {% if plan.active %}checked{% endif %}
+                                aria-label="Тариф активен"></td>
+                        <td class="tt-actions">
+                            <button class="btn btn-secondary btn-sm" type="button"
+                                onclick="savePlan('{{ plan.id }}')">Сохранить</button>
+                            <button class="btn btn-danger btn-sm" type="button"
+                                onclick="deletePlan('{{ plan.id }}')">Удалить</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="8" class="tt-row-note">
+                            <input class="form-input" id="ds-{{ plan.id }}" value="{{ plan.description }}"
+                                placeholder="Описание (видно клиенту)" style="font-size: 12px; margin-bottom: 4px;">
+                            Код: <span class="tt-mono">{{ plan.slug }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="tt-empty" role="status">
+            <span class="tt-empty__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12 12 20 4 12V4h8l8 8Z"/><circle cx="8.5" cy="8.5" r="1"/></svg></span>
+            <span class="tt-empty__title">Тарифов пока нет</span>
+            <a class="btn btn-secondary tt-empty__action" href="#newName">Добавить тариф</a>
+        </div>
+        {% endif %}
+
+        <div class="tt-subsection">
+            <div class="tt-section__head">
+                <div>
+                    <h3 class="tt-section__title">Добавить тариф</h3>
+                </div>
+            </div>
+            <form onsubmit="return createPlan(event)">
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" for="newName">Название</label>
+                        <input class="form-input" type="text" id="newName" required placeholder="1 месяц">
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="newPrice">Цена, ₽</label>
+                        <input class="form-input" type="text" id="newPrice" required placeholder="199">
+                    </div>
+                </div>
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" for="newDays">Срок, дней</label>
+                        <input class="form-input" type="number" id="newDays" value="30" min="1" max="3650" required>
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="newLimit">Устройств</label>
+                        <input class="form-input" type="number" id="newLimit" value="5" min="1" max="50" required>
+                    </div>
+                </div>
+                <div class="tt-field">
+                    <label class="form-label" for="newTarget">Сервер и протокол</label>
+                    <select class="form-select" id="newTarget" style="width: 100%;">
+                        <option value="">по умолчанию (сервер из настроек)</option>
+                        {% for target in targets %}
+                        <option value="{{ target.value }}">{{ target.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="tt-field">
+                    <label class="form-label" for="newDesc">Описание</label>
+                    <input class="form-input" type="text" id="newDesc" placeholder="1 устройство, AmneziaWG">
+                </div>
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" for="newSort">Сортировка</label>
+                        <input class="form-input" type="number" id="newSort" value="100">
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="newSlug">Короткий код (необязательно)</label>
+                        <input class="form-input" type="text" id="newSlug" placeholder="month">
+                    </div>
+                </div>
+                <label class="tt-check"><input type="checkbox" id="newActive" checked> Активен (виден клиентам)</label>
+                <div class="tt-actions-row">
+                    <button class="btn btn-primary" type="submit">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+
+<div class="tt-panel" id="promos">
+    <section class="tt-section" aria-labelledby="promos-title">
+        <div class="tt-section__head">
+            <div>
+                <h2 class="tt-section__title" id="promos-title">Промокоды</h2>
+                <p class="tt-section__note">Скидки, бонусные и бесплатные дни</p>
+            </div>
+        </div>
+        <div class="tt-alert tt-alert--error" id="errPromos"></div>
+        <div class="tt-alert tt-alert--ok" id="okPromos"></div>
+        {% if not promos %}
+        <div class="tt-empty" role="status">
+            <span class="tt-empty__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 12l-8 8-9-9V4h7z"/><circle cx="7.5" cy="8" r="1"/></svg></span>
+            <span class="tt-empty__title">Промокодов пока нет</span>
+            <a class="btn btn-secondary tt-empty__action" href="#promoCode">Создать промокод</a>
+        </div>
+        {% else %}
+        <div class="tt-table-wrap">
+            <table class="tt-table tt-table--promos">
+                <thead>
+                    <tr>
+                        <th scope="col">Код</th>
+                        <th scope="col">Что даёт</th>
+                        <th scope="col">Тариф</th>
+                        <th scope="col" class="tt-num">Использований</th>
+                        <th scope="col" class="tt-num">На клиента</th>
+                        <th scope="col">Действует до</th>
+                        <th scope="col">Вкл.</th>
+                        <th scope="col"><span class="tt-sr-only">Действия</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in promos %}
+                    <tr data-kind="{{ p.kind }}" data-value="{{ p.value }}" data-plan="{{ p.plan_id or '' }}"
+                        data-max-uses="{{ p.max_uses or 0 }}" data-note="{{ p.note or '' }}">
+                        <td><input class="form-input tt-input-mono" id="pc-{{ p.id }}" value="{{ p.code }}"
+                                style="min-width: 130px;"></td>
+                        <td>{{ p.label }}</td>
+                        <td>{{ p.plan_name or 'любой' }}</td>
+                        <td class="tt-num">
+                            {{ p.used_count }}{% if p.max_uses %} / {{ p.max_uses }}{% else %} / ∞{% endif %}
+                        </td>
+                        <td class="tt-num"><input class="form-input tt-input-num" id="pu-{{ p.id }}"
+                                value="{{ p.per_user }}" style="width: 64px;"></td>
+                        <td><input class="form-input" type="date" id="pd-{{ p.id }}"
+                                value="{{ (p.valid_until or '')[:10] }}" style="width: 150px;"></td>
+                        <td><input type="checkbox" id="pa-{{ p.id }}" {% if p.active %}checked{% endif %}
+                                aria-label="Промокод активен"></td>
+                        <td class="tt-actions">
+                            <button class="btn btn-secondary btn-sm" type="button"
+                                onclick="savePromo('{{ p.id }}')">Сохранить</button>
+                            <button class="btn btn-danger btn-sm" type="button"
+                                onclick="deletePromo('{{ p.id }}', {{ 'true' if p.used_count else 'false' }})">
+                                {{ 'Отключить' if p.used_count else 'Удалить' }}
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="8" class="tt-row-note">
+                            {% if p.note %}{{ p.note }} · {% endif %}лимит: {{ p.max_uses or '∞' }}
+                            {% if p.exhausted %} · <span class="tt-text-danger">лимит исчерпан</span>{% endif %}
+                            — тип и значение не меняются, создайте новый код.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <div class="tt-subsection">
+            <div class="tt-section__head">
+                <div>
+                    <h3 class="tt-section__title">Создать промокод</h3>
+                </div>
+            </div>
+            <form onsubmit="return createPromo(event)">
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" for="promoCode">Код</label>
+                        <input class="form-input tt-input-mono" type="text" id="promoCode" required
+                            placeholder="START50" autocomplete="off">
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="promoKind">Тип</label>
+                        <select class="form-select" id="promoKind" style="width: 100%;" onchange="promoKindChanged()">
+                            {% for kind, label in promo_kinds %}
+                            <option value="{{ kind }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" id="promoValueLabel" for="promoValue">Значение</label>
+                        <input class="form-input" type="text" id="promoValue" required placeholder="50">
+                        <div class="form-hint" id="promoValueHint">Процент скидки: 1–100.</div>
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="promoPlan">Тариф (необязательно)</label>
+                        <select class="form-select" id="promoPlan" style="width: 100%;">
+                            <option value="">любой тариф</option>
+                            {% for plan in plans %}
+                            <option value="{{ plan.id }}">{{ plan.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" for="promoMax">Всего использований (0 — без лимита)</label>
+                        <input class="form-input" type="number" id="promoMax" value="0" min="0">
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="promoPerUser">На одного клиента</label>
+                        <input class="form-input" type="number" id="promoPerUser" value="1" min="1" max="100">
+                    </div>
+                </div>
+                <div class="tt-form-grid">
+                    <div class="tt-field">
+                        <label class="form-label" for="promoUntil">Действует до (необязательно)</label>
+                        <input class="form-input" type="date" id="promoUntil">
+                    </div>
+                    <div class="tt-field">
+                        <label class="form-label" for="promoNote">Заметка</label>
+                        <input class="form-input" type="text" id="promoNote" placeholder="например, для рассылки">
+                    </div>
+                </div>
+                <label class="tt-check"><input type="checkbox" id="promoActive" checked> Активен</label>
+                <div class="tt-actions-row">
+                    <button class="btn btn-primary" type="submit">Создать</button>
+                </div>
+                <div class="form-hint" style="margin-top: 12px;">
+                    Промокод на 100% скидку выдаёт доступ сразу, без перехода в ЮKassa.
+                    Бесплатные дни заменяют срок тарифа, бонусные дни — добавляются к нему.
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+
+<div class="tt-panel" id="trial">
+    <section class="tt-section" aria-labelledby="trial-title">
+        <div class="tt-section__head">
+            <div>
+                <h2 class="tt-section__title" id="trial-title">Пробный период</h2>
+                <p class="tt-section__note">Сколько дней и устройств получает новый клиент</p>
+            </div>
+        </div>
+        <div class="tt-alert tt-alert--error" id="errTrial"></div>
+        <div class="tt-alert tt-alert--ok" id="okTrial"></div>
+        <form onsubmit="return saveTrial(event)">
+            <label class="tt-check"><input type="checkbox" id="trialEnabled" {% if settings.trial_enabled %}checked{% endif %}>
+                Разрешить бесплатный пробный период</label>
+            <div class="tt-form-grid">
+                <div class="tt-field">
+                    <label class="form-label" for="trialDays">Длительность, дней</label>
+                    <input class="form-input" type="number" id="trialDays" min="0" max="365"
+                        value="{{ settings.trial_days }}">
+                </div>
+                <div class="tt-field">
+                    <label class="form-label" for="trialDevices">Устройств в пробном периоде</label>
+                    <input class="form-input" type="number" id="trialDevices" min="1" max="50"
+                        value="{{ settings.trial_device_limit }}">
+                </div>
+            </div>
+            <div class="tt-field">
+                <label class="form-label" for="trialIpLimit">Сколько пробных периодов допускать с одного IP за 30
+                    дней</label>
+                <input class="form-input" type="number" id="trialIpLimit" min="0" max="100"
+                    value="{{ settings.trial_ip_limit }}">
+                <div class="form-hint">0 — без ограничения по IP. Одна попытка на аккаунт действует всегда,
+                    повторная регистрация после оплаты пробный период не получает.</div>
+            </div>
+            <div class="tt-actions-row">
+                <button class="btn btn-primary" type="submit">Сохранить</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<div class="tt-panel" id="payments">
+    <section class="tt-section" aria-labelledby="payments-title">
+        <div class="tt-section__head">
+            <div>
+                <h2 class="tt-section__title" id="payments-title">Платежи</h2>
+                <p class="tt-section__note">История оплат, промокодов и статусов ЮKassa</p>
+            </div>
+        </div>
+        {% if payments %}
+        <div class="tt-table-wrap">
+            <table class="tt-table tt-table--payments">
+                <thead>
+                    <tr>
+                        <th scope="col">Дата</th>
+                        <th scope="col">Клиент</th>
+                        <th scope="col" class="tt-num">Сумма</th>
+                        <th scope="col">Промо</th>
+                        <th scope="col">Статус</th>
+                        <th scope="col">ID ЮKassa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in payments %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ p.created_at[:16].replace('T', ' ') }}</td>
+                        <td>{{ p.user_label }}</td>
+                        <td class="tt-num">{{ format_money(p.amount_kopecks) }}
+                            {% if p.discount_kopecks %}<span class="form-hint" style="display: block;">скидка
+                                {{ format_money(p.discount_kopecks) }}</span>{% endif %}
+                            {% if p.bonus_days %}<span class="form-hint" style="display: block;">+{{ p.bonus_days }}
+                                дн.</span>{% endif %}
+                        </td>
+                        <td class="tt-mono">{{ p.promo_code or '—' }}</td>
+                        <td>
+                            {% if p.status == 'succeeded' %}<span class="badge badge-success">оплачен</span>
+                            {% elif p.status == 'canceled' %}<span class="badge badge-danger">отменён</span>
+                            {% else %}<span class="badge badge-warn">ожидает</span>{% endif %}
+                        </td>
+                        <td class="tt-mono">{{ p.provider_payment_id or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="tt-empty" role="status">
+            <span class="tt-empty__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg></span>
+            <span class="tt-empty__title">Платежей пока нет</span>
+            <a class="btn btn-secondary tt-empty__action" href="#plans">Посмотреть тарифы</a>
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    window.BILLING_CSRF = {{ csrf | tojson }};
+
+    async function bcPost(url, payload) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({ csrf: window.BILLING_CSRF }, payload || {}))
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) { }
+        if (!res.ok) {
+            const error = new Error(data.error || 'Ошибка запроса');
+            error.status = res.status;
+            error.payload = data;
+            throw error;
+        }
+        return data;
+    }
+
+    function bcShowError(el, message) {
+        if (!el) { alert(message); return; }
+        el.textContent = message;
+        el.classList.add('show');
+    }
+
+    async function adminCall(url, payload, errId, okId, okText) {
+        const err = document.getElementById(errId);
+        const ok = okId ? document.getElementById(okId) : null;
+        err.classList.remove('show');
+        if (ok) ok.classList.remove('show');
+        try {
+            const data = await bcPost(url, payload);
+            if (ok) {
+                ok.textContent = okText || 'Сохранено';
+                ok.classList.add('show');
+                if (data.reload !== false) setTimeout(() => window.location.reload(), 700);
+            }
+            return data;
+        } catch (e) {
+            bcShowError(err, e.message);
+            return null;
+        }
+    }
+
+    function saveTrial(ev) {
+        ev.preventDefault();
+        adminCall('/api/billing/admin/settings', {
+            values: {
+                trial_enabled: document.getElementById('trialEnabled').checked,
+                trial_days: document.getElementById('trialDays').value,
+                trial_device_limit: document.getElementById('trialDevices').value,
+                trial_ip_limit: document.getElementById('trialIpLimit').value
+            }
+        }, 'errTrial', 'okTrial', 'Пробный период сохранён');
+        return false;
+    }
+
+    function planPayload(id) {
+        return {
+            name: document.getElementById('n-' + id).value,
+            price_rub: document.getElementById('p-' + id).value,
+            days: document.getElementById('d-' + id).value,
+            device_limit: document.getElementById('l-' + id).value,
+            target: document.getElementById('t-' + id).value,
+            sort: document.getElementById('s-' + id).value,
+            description: document.getElementById('ds-' + id).value,
+            active: document.getElementById('a-' + id).checked
+        };
+    }
+
+    function savePlan(id) {
+        adminCall('/api/billing/admin/plans/' + id, planPayload(id), 'errPlans', 'okPlans', 'Тариф сохранён');
+    }
+
+    async function deletePlan(id) {
+        if (!confirm('Удалить тариф? Если по нему уже были оплаты, удаление будет отклонено.')) return;
+        await adminCall('/api/billing/admin/plans/' + id + '/delete', {}, 'errPlans', 'okPlans', 'Тариф удалён');
+    }
+
+    function createPlan(ev) {
+        ev.preventDefault();
+        adminCall('/api/billing/admin/plans', {
+            name: document.getElementById('newName').value,
+            price_rub: document.getElementById('newPrice').value,
+            days: document.getElementById('newDays').value,
+            device_limit: document.getElementById('newLimit').value,
+            target: document.getElementById('newTarget').value,
+            description: document.getElementById('newDesc').value,
+            sort: document.getElementById('newSort').value,
+            slug: document.getElementById('newSlug').value,
+            active: document.getElementById('newActive').checked
+        }, 'errPlans', 'okPlans', 'Тариф добавлен');
+        return false;
+    }
+
+    function promoKindChanged() {
+        const kind = document.getElementById('promoKind').value;
+        const hint = document.getElementById('promoValueHint');
+        const input = document.getElementById('promoValue');
+        const label = document.getElementById('promoValueLabel');
+        const map = {
+            percent: ['Скидка, %', 'Процент скидки: 1–100.', '50'],
+            amount: ['Скидка, ₽', 'Сумма скидки в рублях, например 100.', '100'],
+            bonus_days: ['Бонусные дни', 'Сколько дней добавить к сроку тарифа.', '7'],
+            free_days: ['Бесплатных дней', 'Клиент получит доступ на это число дней без оплаты.', '3']
+        };
+        const item = map[kind] || map.percent;
+        label.textContent = item[0];
+        hint.textContent = item[1];
+        input.placeholder = item[2];
+    }
+
+    async function createPromo(ev) {
+        ev.preventDefault();
+        const data = await adminCall('/api/billing/admin/promos', {
+            code: document.getElementById('promoCode').value,
+            kind: document.getElementById('promoKind').value,
+            value: document.getElementById('promoValue').value,
+            plan_id: document.getElementById('promoPlan').value,
+            max_uses: document.getElementById('promoMax').value,
+            per_user: document.getElementById('promoPerUser').value,
+            valid_until: document.getElementById('promoUntil').value,
+            note: document.getElementById('promoNote').value,
+            active: document.getElementById('promoActive').checked
+        }, 'errPromos', 'okPromos', 'Промокод создан');
+        return false;
+    }
+
+    async function savePromo(id) {
+        const row = document.getElementById('pc-' + id).closest('tr');
+        await adminCall('/api/billing/admin/promos/' + id, {
+            code: document.getElementById('pc-' + id).value,
+            kind: row.dataset.kind,
+            value: row.dataset.value,
+            plan_id: row.dataset.plan,
+            note: row.dataset.note,
+            max_uses: row.dataset.maxUses || '',
+            per_user: document.getElementById('pu-' + id).value,
+            valid_until: document.getElementById('pd-' + id).value,
+            active: document.getElementById('pa-' + id).checked
+        }, 'errPromos', 'okPromos', 'Промокод сохранён');
+    }
+
+    async function deletePromo(id, used) {
+        const text = used
+            ? 'По промокоду уже были активации. Отключить его? История сохранится.'
+            : 'Удалить промокод?';
+        if (!confirm(text)) return;
+        await adminCall('/api/billing/admin/promos/' + id + '/delete', {}, 'errPromos', 'okPromos',
+            used ? 'Промокод отключён' : 'Промокод удалён');
+    }
+
+    promoKindChanged();
+</script>
+<script>
+    /* Разделы-вкладки: ссылки с якорем остаются рабочими и без JS. */
+    (function () {
+        const tabs = document.querySelector('.page--billing .tt-tabs');
+        if (!tabs) return;
+        const links = Array.from(tabs.querySelectorAll('.tt-tab'));
+        const panels = Array.from(document.querySelectorAll('.page--billing .tt-panel'));
+        if (!links.length || !panels.length) return;
+
+        document.documentElement.classList.add('tt-tabs-ready');
+
+        function available(id) {
+            return panels.some((panel) => panel.id === id);
+        }
+
+        function show(id) {
+            if (!available(id)) id = panels[0].id;
+            panels.forEach((panel) => panel.classList.toggle('is-active', panel.id === id));
+            links.forEach((link) => {
+                const active = link.getAttribute('href') === '#' + id;
+                link.classList.toggle('active', active);
+                if (active) link.setAttribute('aria-current', 'true');
+                else link.removeAttribute('aria-current');
+            });
+            return id;
+        }
+
+        function fromHash() {
+            show((window.location.hash || '').replace('#', ''));
+        }
+
+        tabs.addEventListener('click', (event) => {
+            const link = event.target.closest('.tt-tab');
+            if (!link) return;
+            const id = (link.getAttribute('href') || '').replace('#', '');
+            if (!available(id)) return;
+            event.preventDefault();
+            show(id);
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState(null, '', '#' + id);
+            } else {
+                window.location.hash = id;
+            }
+        });
+
+        window.addEventListener('hashchange', fromHash);
+        fromHash();
+    })();
+</script>
+{% endblock %}

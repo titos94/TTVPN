@@ -1,0 +1,1449 @@
+{% extends "base.html" %}
+
+{% block title_extra %} — {{ _('nav_servers') }}{% endblock %}
+{% block page_class %}page page--servers{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* ==========================================================================
+       Плотный список серверов.
+
+       Временные правила страницы: пока в static/css/ttvpn-ui.css нет готовых
+       .tt-metric-grid / .tt-table / .tt-empty / .tt-alert, страница рисует
+       строки сама. Все подстраховки для общих компонентов обёрнуты в :where(),
+       у них нулевая специфичность: как только компоненты появятся в
+       ttvpn-ui.css, их правила выигрывают без правки этого шаблона.
+       ========================================================================== */
+
+    .page--servers .servers-summary {
+        margin-bottom: 24px;
+    }
+
+    /* ---- Сводка: плотные плитки вместо «таблеток» ---- */
+    :where(.tt-metric-grid) {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 0;
+    }
+
+    :where(.tt-metric) {
+        min-width: 0;
+        padding: 14px 16px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-card);
+    }
+
+    :where(.tt-metric-top) {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    :where(.tt-metric-icon) {
+        display: grid;
+        place-items: center;
+        flex: 0 0 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+
+    :where(.tt-metric-icon) svg {
+        width: 15px;
+        height: 15px;
+    }
+
+    :where(.tt-metric-value) {
+        margin-top: 10px;
+        color: var(--text-primary);
+        font-size: clamp(20px, 2.2vw, 26px);
+        font-weight: 700;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+    }
+
+    :where(.tt-metric-note) {
+        margin-top: 4px;
+        color: var(--text-muted);
+        font-size: 11.5px;
+        line-height: 1.45;
+    }
+
+    /* ---- Заголовок списка ---- */
+    .page--servers .servers-list-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+
+    .page--servers .servers-list-title {
+        margin: 0;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    .page--servers .servers-list-hint {
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    /* ---- Строки-карточки: одна сетка на шапку и на строки ---- */
+    .page--servers .tt-table.server-table {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        overflow: visible;
+        font-size: inherit;
+    }
+
+    .page--servers .server-table__head,
+    .page--servers .server-table .server-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1.7fr) minmax(132px, 0.8fr) minmax(0, 1.2fr) auto;
+        gap: 14px;
+        align-items: center;
+    }
+
+    .page--servers .server-table__head {
+        padding: 0 18px 2px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .page--servers .server-table__head > span:last-child {
+        text-align: right;
+    }
+
+    .page--servers .server-table .server-card {
+        margin: 0;
+        padding: 12px 18px;
+        cursor: pointer;
+    }
+
+    .page--servers .server-cell {
+        min-width: 0;
+    }
+
+    .page--servers .server-cell--identity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+
+    .page--servers .server-identity {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .page--servers .server-name {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .page--servers .server-host {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        direction: ltr;
+        unicode-bidi: isolate;
+        overflow-wrap: anywhere;
+    }
+
+    .page--servers .server-cell--status {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .page--servers .server-cell--status .ping-ms {
+        margin-left: 0;
+        overflow-wrap: anywhere;
+    }
+
+    /* Индикатор доступности совмещает .ping-dot (его подсвечивает JS) и
+       .status-dot из ttvpn-ui.css; возвращаем точкам их плотность. */
+    .page--servers .server-card .ping-dot.status-dot {
+        opacity: 1;
+        margin-right: 0;
+        flex: 0 0 auto;
+    }
+
+    .page--servers .server-card .ping-dot.status-dot.ping-ok {
+        background: var(--success);
+    }
+
+    .page--servers .server-card .ping-dot.status-dot.ping-fail {
+        background: var(--danger);
+    }
+
+    .page--servers .server-card .ping-dot.status-dot.ping-pending {
+        background: var(--text-muted);
+    }
+
+    .page--servers .server-protocols {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .page--servers .server-card .server-protocols {
+        margin-top: 0;
+    }
+
+    .page--servers .server-protocols__count {
+        display: inline-grid;
+        place-items: center;
+        min-width: 20px;
+        height: 20px;
+        margin-right: 2px;
+        padding: 0 5px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .page--servers .server-protocols .badge {
+        padding: 2px 8px;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: none;
+    }
+
+    .page--servers .server-cell--actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+    }
+
+    .page--servers .server-action-open {
+        color: inherit;
+        text-decoration: none;
+    }
+    .page--servers .server-action-open:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+        border-radius: 2px;
+    }
+
+    /* ---- Пустое состояние ---- */
+    :where(.tt-empty) {
+        text-align: center;
+    }
+
+    /* ---- Предупреждения в модальных окнах ---- */
+    :where(.tt-alert) {
+        padding: 12px 14px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    :where(.tt-alert--danger) {
+        border-color: var(--danger-border);
+        background: var(--danger-bg);
+        color: var(--text-primary);
+    }
+
+    :where(.tt-alert--info) {
+        border-color: var(--border-color);
+        background: var(--bg-card);
+        color: var(--text-secondary);
+    }
+
+    .page--servers .ssh-trust-alert {
+        margin: var(--space-md) 0 0;
+    }
+
+    .page--servers .ssh-trust-alert > section {
+        flex-basis: auto;
+    }
+
+    /* ---- Планшет и телефон: строка превращается в карточку ---- */
+    @media (max-width: 1100px) {
+        .page--servers .server-table__head {
+            display: none;
+        }
+
+        .page--servers .server-table .server-card {
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas:
+                "identity status"
+                "protocols protocols"
+                "actions actions";
+            gap: 10px 12px;
+            padding: 14px;
+        }
+
+        .page--servers .server-cell--identity {
+            grid-area: identity;
+        }
+
+        .page--servers .server-cell--status {
+            grid-area: status;
+            justify-content: flex-end;
+        }
+
+        .page--servers .server-cell--protocols {
+            grid-area: protocols;
+        }
+
+        .page--servers .server-cell--actions {
+            grid-area: actions;
+            justify-content: flex-start;
+        }
+
+        .page--servers .servers-list-hint {
+            display: none;
+        }
+    }
+
+    @media (max-width: 980px) {
+        :where(.tt-metric-grid) {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 560px) {
+        .page--servers .server-table .server-card {
+            padding: 12px;
+        }
+
+        .page--servers .server-cell--identity {
+            gap: 10px;
+        }
+
+        .page--servers .server-icon {
+            width: 34px;
+            height: 34px;
+        }
+
+        .page--servers .server-cell--actions .btn-icon {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+        }
+    }
+
+    @media (max-width: 380px) {
+        :where(.tt-metric-grid) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    /* Compact host-key warning on server rows. Kept local to this page so the
+       row signal does not depend on the detail-page trust panel styles. */
+    .ssh-trust-warn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid var(--danger-border);
+        background: var(--danger-bg);
+        color: var(--danger);
+        cursor: pointer;
+        vertical-align: middle;
+    }
+
+    .ssh-trust-warn:hover,
+    .ssh-trust-warn:focus-visible {
+        background: var(--danger);
+        color: #fff;
+        outline: none;
+    }
+
+    .ssh-trust-warn.is-changed {
+        animation: sshTrustWarnPulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes sshTrustWarnPulse {
+        0%, 100% { box-shadow: 0 0 0 0 var(--danger-border); }
+        50% { box-shadow: 0 0 0 4px transparent; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .ssh-trust-warn.is-changed { animation: none; }
+    }
+
+    .ssh-trust-details {
+        display: grid;
+        gap: var(--space-sm);
+        margin: var(--space-md) 0;
+        padding: var(--space-md);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-tertiary, var(--bg-secondary));
+    }
+
+    .ssh-trust-details__label {
+        color: var(--text-muted);
+        font-size: var(--text-sm);
+    }
+
+    .ssh-trust-details__value {
+        display: block;
+        margin-top: 2px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: var(--text-sm);
+        direction: ltr;
+        unicode-bidi: isolate;
+        overflow-wrap: anywhere;
+        text-align: left;
+    }
+
+    [dir="rtl"] .ssh-trust-details__value { text-align: left; }
+
+    .ssh-trust-details__old {
+        margin: var(--space-xs) 0 0;
+        padding-inline-start: 18px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: var(--text-sm);
+        direction: ltr;
+        unicode-bidi: isolate;
+        overflow-wrap: anywhere;
+        text-align: left;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set server_total = servers | length %}
+{% set protocol_total = namespace(value=0) %}
+{% for srv in servers %}
+{% for proto_key, proto_val in (srv.get('protocols') or {}).items() %}
+{% if proto_val.get('installed') %}{% set protocol_total.value = protocol_total.value + 1 %}{% endif %}
+{% endfor %}
+{% endfor %}
+<section class="servers-page">
+    <div class="page-header">
+        <div>
+            <div class="tt-eyebrow">Панель управления</div>
+            <h1 class="section-title page-header__title" id="serversPageTitle">
+                <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+                {{ _('nav_servers') }}
+            </h1>
+            <p class="page-header__subtitle" id="serversSummaryText">{% if servers %}Серверов: {{ server_total }}. Проверяем доступность…{% else %}Серверов пока нет{% endif %}</p>
+        </div>
+        <div class="page-header__actions">
+            {% if current_user.role == 'admin' %}
+            <a href="/servers/new" class="btn btn-primary">
+                <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                {{ _('add_server') }}
+            </a>
+            {% else %}
+            <span class="text-muted text-sm">{{ _('add_server_admin_only') }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if servers %}
+    <section class="servers-summary" aria-label="Сводка по серверам">
+        <div class="tt-metric-grid">
+            <article class="tt-metric">
+                <div class="tt-metric-top">
+                    <span>Всего серверов</span>
+                    <span class="tt-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+                </div>
+                <div class="tt-metric-value" id="metricServersTotal">{{ server_total }}</div>
+            </article>
+            <article class="tt-metric">
+                <div class="tt-metric-top">
+                    <span>Доступно</span>
+                    <span class="tt-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+                </div>
+                <div class="tt-metric-value" id="metricServersOnline" aria-live="polite">…</div>
+            </article>
+            <article class="tt-metric">
+                <div class="tt-metric-top">
+                    <span>Ошибки проверки</span>
+                    <span class="tt-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+                </div>
+                <div class="tt-metric-value" id="metricServersErrors" aria-live="polite">…</div>
+            </article>
+            <article class="tt-metric">
+                <div class="tt-metric-top">
+                    <span>Протоколы</span>
+                    <span class="tt-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+                </div>
+                <div class="tt-metric-value" id="metricProtocols">{{ protocol_total.value }}</div>
+            </article>
+        </div>
+    </section>
+
+    <section class="servers-list" aria-labelledby="serversListTitle">
+        <div class="servers-list-head">
+            <h2 class="servers-list-title" id="serversListTitle">Все серверы</h2>
+            <span class="servers-list-hint">Перетащите строку, чтобы изменить порядок</span>
+        </div>
+
+        <div class="tt-table server-table" id="serverGrid" role="table" aria-labelledby="serversListTitle">
+            <div class="server-table__head" role="row" aria-hidden="true">
+                <span role="columnheader">Сервер</span>
+                <span role="columnheader">Доступность</span>
+                <span role="columnheader">Протоколы</span>
+                <span role="columnheader">Действия</span>
+            </div>
+            {% for server in servers %}
+            {% set proto_count = namespace(value=0) %}
+            {% for proto_key, proto_val in (server.get('protocols') or {}).items() %}
+            {% if proto_val.get('installed') %}{% set proto_count.value = proto_count.value + 1 %}{% endif %}
+            {% endfor %}
+            <div class="card card-hover server-card" role="row" id="server-{{ loop.index0 }}" data-idx="{{ loop.index0 }}" data-uid="{{ server.uid or '' }}"
+                data-name="{{ server.name }}" data-host="{{ server.host }}" data-port="{{ server.ssh_port }}"
+                data-username="{{ server.username }}" data-auth="{{ 'key' if server.private_key else 'password' }}"
+                data-self-service="{{ 'true' if server.get('self_service_enabled') else 'false' }}"
+                draggable="true">
+                <div class="server-cell server-cell--identity" role="cell">
+                    <div class="server-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <div class="server-identity">
+                        <div class="server-name">
+                            <a href="/server/{{ loop.index0 }}" class="server-action-open">{{ server.name }}</a>
+                            {% if current_user.role == 'admin' %}
+                            <button type="button" class="ssh-trust-warn hidden" id="ssh-trust-{{ loop.index0 }}"
+                                onclick="openServerTrust({{ loop.index0 }})"
+                                title="{{ _('ssh_trust_button_changed') }}"
+                                aria-label="{{ _('ssh_trust_button_changed') }}">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                                    <line x1="12" y1="9" x2="12" y2="13" />
+                                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                                </svg>
+                            </button>
+                            {% endif %}
+                        </div>
+                        <div class="server-host">{{ server.host }}:{{ server.ssh_port }}</div>
+                    </div>
+                </div>
+
+                <div class="server-cell server-cell--status" role="cell">
+                    <span class="ping-dot ping-pending status-dot" id="ping-{{ loop.index0 }}"
+                        title="{{ _('ping_checking') }}"></span>
+                    <span class="ping-ms text-muted" id="ping-ms-{{ loop.index0 }}"></span>
+                </div>
+
+                <div class="server-cell server-cell--protocols" role="cell">
+                    <div class="server-protocols" id="server-protocols-{{ loop.index0 }}">
+                        {% if proto_count.value %}
+                        <span class="server-protocols__count" title="Установлено протоколов: {{ proto_count.value }}">{{ proto_count.value }}</span>
+                        {% endif %}
+                        {% for proto_key, proto_val in (server.get('protocols') or {}).items() %}
+                        {% if proto_val.get('installed') %}
+                        <span class="badge badge-success">
+                            <span class="badge-dot"></span>
+                            {% if proto_key.split('__')[0] == 'awg2' %}
+                            {{ protocol_short_name(proto_key, proto_val.get('header_protection'), proto_val.get('protocol_version')) }}
+                            {% else %}
+                            {{ 'AWG' if proto_key == 'awg' else ('AWG-Legacy' if proto_key == 'awg_legacy' else ('Xray' if
+                            proto_key == 'xray' else ('Exit' if proto_key == 'exit' else proto_key | upper))) }}
+                            {% endif %}
+                        </span>
+                        {% endif %}
+                        {% endfor %}
+                        {% if not proto_count.value %}
+                        <span class="badge badge-warn">
+                            <span class="badge-dot"></span>
+                            {{ _('no_protocols') }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="server-cell server-cell--actions" role="cell">
+                    <span class="reorder-btns">
+                        <button type="button" class="btn btn-secondary btn-sm btn-icon" onclick="moveServer({{ loop.index0 }}, -1)"
+                            title="Переместить выше" aria-label="Переместить выше">
+                            <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                aria-hidden="true"><polyline points="18 15 12 9 6 15" /></svg>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-icon" onclick="moveServer({{ loop.index0 }}, 1)"
+                            title="Переместить ниже" aria-label="Переместить ниже">
+                            <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+                        </button>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm btn-icon" onclick="recheckServer({{ loop.index0 }})"
+                        title="Проверить доступность" aria-label="Проверить доступность">
+                        <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-icon" onclick="openEditServer(this)"
+                        title="{{ _('edit') }}" aria-label="{{ _('edit') }}">
+                        <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm btn-icon" onclick="deleteServer({{ loop.index0 }})"
+                        title="{{ _('delete') }}" aria-label="{{ _('delete') }}">
+                        <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% else %}
+    <div class="tt-empty empty-state server-empty">
+        <div class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="empty-title">{{ _('no_servers') }}</div>
+        <div class="empty-desc">
+            {{ _('add_server_desc') }}
+        </div>
+        {% if current_user.role == 'admin' %}
+        <a href="/servers/new" class="btn btn-primary">
+            <svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            {{ _('add_server') }}
+        </a>
+        {% else %}
+        <p class="text-muted text-sm">{{ _('add_server_admin_only') }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+
+<!-- ===== Edit Server Modal ===== -->
+<div class="modal-backdrop" id="editServerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title">{{ _('edit_server_title') }}</h2>
+            <button type="button" class="modal-close" onclick="closeModal('editServerModal')"
+                title="Закрыть" aria-label="Закрыть">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+
+        <form id="editServerForm" onsubmit="return submitEditServer(event)">
+            <input type="hidden" id="editServerIdx">
+
+            <div class="form-group">
+                <label class="form-label">{{ _('name') }}</label>
+                <input class="form-input" type="text" id="editServerName">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_host') }}</label>
+                    <input class="form-input" type="text" id="editServerHost" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_port') }}</label>
+                    <input class="form-input" type="number" id="editServerPort" min="1" max="65535">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">{{ _('ssh_user') }}</label>
+                <input class="form-input" type="text" id="editServerUser" required>
+            </div>
+
+            <div class="tabs" style="margin-top: var(--space-md)">
+                <button type="button" class="tab active" onclick="switchEditAuthTab('password', this)">{{ _('ssh_password') }}</button>
+                <button type="button" class="tab" onclick="switchEditAuthTab('key', this)">{{ _('ssh_key') }}</button>
+            </div>
+
+            <div id="editAuthPassword">
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_password') }}</label>
+                    <input class="form-input" type="password" id="editServerPassword"
+                        placeholder="{{ _('edit_keep_credential') }}">
+                    <div class="form-hint">{{ _('edit_keep_credential') }}</div>
+                </div>
+            </div>
+
+            <div id="editAuthKey" class="hidden">
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_key') }}</label>
+                    <textarea class="form-textarea" id="editServerKey"
+                        placeholder="{{ _('edit_keep_credential') }}"></textarea>
+                    <div class="form-hint">{{ _('edit_keep_credential') }}</div>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-color);">
+                <label class="form-label">
+                    <input type="checkbox" id="editServerSelfService">
+                    {{ _('server_self_service_enabled') }}
+                </label>
+                <div class="form-hint">{{ _('server_self_service_enabled_desc') }}</div>
+            </div>
+
+            <div class="tt-alert tt-alert--info ssh-trust-alert">
+                {% set trust_kind = 'edit' %}{% include '_ssh_onboarding.html' %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('editServerModal')">{{ _('cancel')
+                    }}</button>
+                <button type="submit" class="btn btn-primary" id="editServerBtn">
+                    <span id="editServerBtnText">{{ _('save') }}</span>
+                    <div class="spinner hidden" id="editServerSpinner"></div>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if current_user.role == 'admin' %}
+<!-- ===== Server host-key warning modal ===== -->
+<div class="modal-backdrop" id="serverTrustModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title" id="serverTrustTitle">{{ _('ssh_trust_changed') }}</h2>
+            <button type="button" class="modal-close" onclick="closeModal('serverTrustModal')"
+                title="Закрыть" aria-label="Закрыть">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <div class="tt-alert tt-alert--danger">
+                <p class="text-muted" id="serverTrustWarning" style="margin: 0;">{{ _('ssh_trust_warning') }}</p>
+            </div>
+
+            <div class="ssh-trust-details" id="serverTrustDetails" aria-live="polite">
+                <span class="text-muted">{{ _('ssh_trust_inspect') }}…</span>
+            </div>
+
+            <label id="serverTrustConfirmRow" class="hidden" style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <input type="checkbox" id="serverTrustVerified">
+                <span>{{ _('ssh_trust_verified') }}</span>
+            </label>
+
+            <p class="form-error hidden" id="serverTrustError" role="alert"></p>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary"
+                onclick="closeModal('serverTrustModal')">{{ _('cancel') }}</button>
+            <button type="button" class="btn btn-primary" id="serverTrustAccept"
+                onclick="acceptServerTrust()" disabled>
+                <span id="serverTrustAcceptText">{{ _('ssh_trust_save') }}</span>
+                <div class="spinner hidden" id="serverTrustSpinner"></div>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Add Server Modal (legacy; admin links now use /servers/new) ===== -->
+<div class="modal-backdrop" id="addServerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title">{{ _('add_server') }}</h2>
+            <button type="button" class="modal-close" onclick="closeModal('addServerModal')"
+                title="Закрыть" aria-label="Закрыть">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+
+        <form id="addServerForm" onsubmit="return addServer(event)">
+            <div class="form-group">
+                <label class="form-label">{{ _('name') }}</label>
+                <input class="form-input" type="text" id="serverName" placeholder="My VPN Server">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_host') }}</label>
+                    <input class="form-input" type="text" id="serverHost" placeholder="192.168.1.1" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_port') }}</label>
+                    <input class="form-input" type="number" id="serverPort" value="22" min="1" max="65535">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">{{ _('ssh_user') }}</label>
+                <input class="form-input" type="text" id="serverUser" placeholder="root" required>
+            </div>
+
+            <!-- Tabs for auth method -->
+            <div class="tabs" style="margin-top: var(--space-md)">
+                <button type="button" class="tab active" onclick="switchAuthTab('password', this)">{{ _('ssh_password')
+                    }}</button>
+                <button type="button" class="tab" onclick="switchAuthTab('key', this)">{{ _('ssh_key') }}</button>
+            </div>
+
+            <div id="authPassword">
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_password') }}</label>
+                    <input class="form-input" type="password" id="serverPassword" placeholder="••••••••">
+                </div>
+            </div>
+
+            <div id="authKey" class="hidden">
+                <div class="form-group">
+                    <label class="form-label">{{ _('ssh_key') }}</label>
+                    <textarea class="form-textarea" id="serverKey"
+                        placeholder="{{ _('ssh_key_placeholder') }}"></textarea>
+                    <div class="form-hint">{{ _('ssh_key_hint') }}</div>
+                </div>
+            </div>
+
+            <div class="tt-alert tt-alert--info ssh-trust-alert">
+                {% set trust_kind = 'add' %}{% include '_ssh_onboarding.html' %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addServerModal')">{{ _('cancel')
+                    }}</button>
+                <button type="submit" class="btn btn-primary" id="addServerBtn">
+                    <span id="addServerBtnText">{{ _('connect') }}</span>
+                    <div class="spinner hidden" id="addServerSpinner"></div>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function switchAuthTab(tab, btn) {
+        document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+
+        document.getElementById('authPassword').classList.toggle('hidden', tab !== 'password');
+        document.getElementById('authKey').classList.toggle('hidden', tab !== 'key');
+    }
+
+    async function addServer(e) {
+        e.preventDefault();
+
+        const btn = document.getElementById('addServerBtn');
+        const btnText = document.getElementById('addServerBtnText');
+        const spinner = document.getElementById('addServerSpinner');
+
+        btn.disabled = true;
+        btnText.textContent = _('connecting');
+        spinner.classList.remove('hidden');
+
+        try {
+            const data = {
+                name: document.getElementById('serverName').value,
+                host: document.getElementById('serverHost').value,
+                ssh_port: parseInt(document.getElementById('serverPort').value) || 22,
+                username: document.getElementById('serverUser').value,
+                password: document.getElementById('serverPassword').value,
+                private_key: document.getElementById('serverKey').value,
+            };
+
+            const result = await apiCall('/api/servers/add', 'POST', data);
+            showToast(_('server_added'), 'success');
+            setTimeout(() => window.location.reload(), 800);
+
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btnText.textContent = _('connect');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    async function deleteServer(serverId) {
+        if (!confirm(_('delete_confirm'))) return;
+
+        try {
+            const uid = document.getElementById(`server-${serverId}`)?.dataset.uid || '';
+            await apiCall(`/api/servers/${serverId}/delete?server_uid=${encodeURIComponent(uid)}`, 'POST');
+            showToast(_('server_deleted'), 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+
+    /* ========== Edit server ========== */
+
+    function switchEditAuthTab(tab, btn) {
+        const tabs = btn.parentElement.querySelectorAll('.tab');
+        tabs.forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('editAuthPassword').classList.toggle('hidden', tab !== 'password');
+        document.getElementById('editAuthKey').classList.toggle('hidden', tab !== 'key');
+    }
+
+    function openEditServer(btn) {
+        // Prefill from data-* on the parent server-card so we don't have to round-trip.
+        const card = btn.closest('.server-card');
+        if (!card) return;
+        document.getElementById('editServerIdx').value = card.dataset.idx;
+        document.getElementById('editServerForm').dataset.serverUid = card.dataset.uid || '';
+        document.getElementById('editServerName').value = card.dataset.name || '';
+        document.getElementById('editServerHost').value = card.dataset.host || '';
+        document.getElementById('editServerPort').value = card.dataset.port || '22';
+        document.getElementById('editServerUser').value = card.dataset.username || '';
+        document.getElementById('editServerPassword').value = '';
+        document.getElementById('editServerKey').value = '';
+
+        // Pre-select the tab matching the server's current auth method.
+        const authIsKey = card.dataset.auth === 'key';
+        const tabsEl = document.querySelector('#editServerForm .tabs');
+        const passTab = tabsEl.children[0];
+        const keyTab = tabsEl.children[1];
+        switchEditAuthTab(authIsKey ? 'key' : 'password', authIsKey ? keyTab : passTab);
+
+        // Self-service checkbox from data attribute.
+        document.getElementById('editServerSelfService').checked = card.dataset.selfService === 'true';
+
+        openModal('editServerModal');
+    }
+
+    async function submitEditServer(e) {
+        e.preventDefault();
+        const idx = document.getElementById('editServerIdx').value;
+        const btn = document.getElementById('editServerBtn');
+        const btnText = document.getElementById('editServerBtnText');
+        const spinner = document.getElementById('editServerSpinner');
+        btn.disabled = true;
+        btnText.textContent = _('saving') || 'Saving...';
+        spinner.classList.remove('hidden');
+        try {
+            const body = {
+                name: document.getElementById('editServerName').value,
+                host: document.getElementById('editServerHost').value,
+                ssh_port: parseInt(document.getElementById('editServerPort').value) || 22,
+                username: document.getElementById('editServerUser').value,
+                // Empty -> null means "leave unchanged" on the backend.
+                password: document.getElementById('editServerPassword').value || null,
+                private_key: document.getElementById('editServerKey').value || null,
+                self_service_enabled: document.getElementById('editServerSelfService').checked,
+            };
+            const uid = document.getElementById('editServerForm').dataset.serverUid || '';
+            await apiCall(`/api/servers/${idx}/edit?server_uid=${encodeURIComponent(uid)}`, 'POST', body);
+            showToast(_('server_saved'), 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btnText.textContent = _('save');
+            spinner.classList.add('hidden');
+        }
+        return false;
+    }
+
+    /* Trust candidates are ephemeral, endpoint-bound, and never contain auth. */
+    const onboardingTrust = {add: {sequence: 0}, edit: {sequence: 0}};
+    function onboardingEndpoint(kind) {
+        const edit = kind === 'edit';
+        const result = {
+            host: document.getElementById(edit ? 'editServerHost' : 'serverHost').value.trim(),
+            ssh_port: Number(document.getElementById(edit ? 'editServerPort' : 'serverPort').value || 22),
+        };
+        if (edit) result.server_uid = document.getElementById('editServerForm').dataset.serverUid;
+        return result;
+    }
+    function resetOnboardingTrust(kind) {
+        onboardingTrust[kind] = {sequence: onboardingTrust[kind].sequence + 1};
+        document.getElementById(kind + '-trust-details').textContent = '';
+        document.getElementById(kind + '-trust-confirmation').hidden = true;
+        document.getElementById(kind + '-trust-verified').checked = false;
+        document.getElementById(kind + '-trust-inspect').disabled = false;
+        document.getElementById(kind + '-trust-save').disabled = false;
+    }
+    async function inspectOnboardingTrust(kind) {
+        resetOnboardingTrust(kind);
+        const state = onboardingTrust[kind], endpoint = onboardingEndpoint(kind);
+        const button = document.getElementById(kind + '-trust-inspect');
+        button.disabled = true;
+        try {
+            const data = await apiCall('/api/ssh-trust/onboarding/inspect', 'POST', endpoint);
+            if (onboardingTrust[kind] !== state || JSON.stringify(endpoint) !== JSON.stringify(onboardingEndpoint(kind))) return;
+            state.token = data.token;
+            state.endpoint = endpoint;
+            const labels = {unknown: _('ssh_trust_unknown'), changed: _('ssh_trust_changed'), trusted: _('ssh_trust_trusted')};
+            document.getElementById(kind + '-trust-details').textContent =
+                data.host + ':' + data.port + '\n' + labels[data.status] + '\n' +
+                data.algorithm + ' ' + data.fingerprint + '\n' + _('ssh_trust_old') + ':\n' +
+                data.old_fingerprints.map(k => k.algorithm + ' ' + k.fingerprint).join('\n');
+            document.getElementById(kind + '-trust-confirmation').hidden = data.status === 'trusted';
+        } catch (error) {
+            if (onboardingTrust[kind] === state) document.getElementById(kind + '-trust-details').textContent = error.message;
+        } finally {
+            if (onboardingTrust[kind] === state) button.disabled = false;
+        }
+    }
+    async function confirmOnboardingTrust(kind) {
+        const state = onboardingTrust[kind], button = document.getElementById(kind + '-trust-save');
+        if (button.disabled || !state.token || !document.getElementById(kind + '-trust-verified').checked) return;
+        if (JSON.stringify(state.endpoint) !== JSON.stringify(onboardingEndpoint(kind))) { resetOnboardingTrust(kind); return; }
+        button.disabled = true;
+        try {
+            await apiCall('/api/ssh-trust/onboarding/confirm', 'POST', {...state.endpoint, token: state.token, confirmed: true});
+            if (onboardingTrust[kind] !== state) return;
+            resetOnboardingTrust(kind);
+            document.getElementById(kind + '-trust-details').textContent = _('ssh_onboarding_saved');
+        } catch (error) {
+            if (onboardingTrust[kind] === state) {
+                resetOnboardingTrust(kind);
+                document.getElementById(kind + '-trust-details').textContent = error.message;
+            }
+        }
+    }
+    for (const kind of ['add', 'edit']) {
+        const ids = kind === 'add' ? ['serverHost', 'serverPort'] : ['editServerHost', 'editServerPort'];
+        ids.forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.addEventListener('input', () => resetOnboardingTrust(kind));
+        });
+    }
+
+    /* ========== Server card host-key warning ========== */
+
+    const serverTrust = { idx: null, uid: '', detail: null, busy: false };
+
+    function serverTrustEndpoint(idx, suffix) {
+        const query = serverTrust.uid ? `?server_uid=${encodeURIComponent(serverTrust.uid)}` : '';
+        return `/api/servers/${idx}/ssh-trust/${suffix}${query}`;
+    }
+
+    function setServerTrustIcon(idx, status) {
+        const btn = document.getElementById(`ssh-trust-${idx}`);
+        if (!btn) return;
+        if (status === 'changed' || status === 'unknown') {
+            btn.classList.remove('hidden');
+            btn.classList.toggle('is-changed', status === 'changed');
+            btn.title = status === 'changed' ? _('ssh_trust_button_changed') : _('ssh_trust_button_urgent');
+            btn.setAttribute('aria-label', btn.title);
+        } else {
+            btn.classList.add('hidden');
+            btn.classList.remove('is-changed');
+        }
+    }
+
+    function trustDetailRow(label, value) {
+        const row = document.createElement('div');
+        const labelEl = document.createElement('span');
+        labelEl.className = 'ssh-trust-details__label';
+        labelEl.textContent = label;
+        const valueEl = document.createElement('span');
+        valueEl.className = 'ssh-trust-details__value';
+        valueEl.textContent = value;
+        row.append(labelEl, valueEl);
+        return row;
+    }
+
+    function renderServerTrust(detail) {
+        const box = document.getElementById('serverTrustDetails');
+        box.textContent = '';
+        box.append(trustDetailRow(_('ssh_host'), `${detail.host}:${detail.port}`));
+        box.append(trustDetailRow(_('ssh_trust_new'), `${detail.algorithm} ${detail.fingerprint}`));
+        if (detail.old_fingerprints && detail.old_fingerprints.length) {
+            const old = document.createElement('div');
+            const label = document.createElement('span');
+            label.className = 'ssh-trust-details__label';
+            label.textContent = _('ssh_trust_old');
+            const list = document.createElement('ul');
+            list.className = 'ssh-trust-details__old';
+            detail.old_fingerprints.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `${item.algorithm} ${item.fingerprint}`;
+                list.append(li);
+            });
+            old.append(label, list);
+            box.append(old);
+        }
+    }
+
+    function resetServerTrust() {
+        serverTrust.idx = null;
+        serverTrust.uid = '';
+        serverTrust.detail = null;
+        serverTrust.busy = false;
+        const details = document.getElementById('serverTrustDetails');
+        if (details) details.textContent = '';
+        document.getElementById('serverTrustConfirmRow').classList.add('hidden');
+        document.getElementById('serverTrustVerified').checked = false;
+        document.getElementById('serverTrustError').classList.add('hidden');
+        document.getElementById('serverTrustSpinner').classList.add('hidden');
+        document.getElementById('serverTrustAccept').disabled = true;
+        document.getElementById('serverTrustAcceptText').textContent = _('ssh_trust_save');
+        document.getElementById('serverTrustTitle').textContent = _('ssh_trust_changed');
+        document.getElementById('serverTrustWarning').textContent = _('ssh_trust_warning');
+    }
+
+    async function openServerTrust(idx) {
+        resetServerTrust();
+        serverTrust.idx = idx;
+        const card = document.getElementById(`server-${idx}`);
+        serverTrust.uid = card ? (card.dataset.uid || '') : '';
+        openModal('serverTrustModal');
+
+        const box = document.getElementById('serverTrustDetails');
+        const loading = document.createElement('span');
+        loading.className = 'text-muted';
+        loading.textContent = `${_('ssh_trust_inspect')}…`;
+        box.append(loading);
+
+        try {
+            const res = await fetch(serverTrustEndpoint(idx, 'inspect'), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (serverTrust.idx !== idx) return;
+            if (!res.ok) throw new Error(data.error || _('ssh_trust_error'));
+
+            serverTrust.detail = data;
+            renderServerTrust(data);
+            if (data.status === 'trusted') {
+                document.getElementById('serverTrustTitle').textContent = _('ssh_trust_trusted');
+                document.getElementById('serverTrustAcceptText').textContent = _('ssh_trust_trusted');
+                return;
+            }
+            document.getElementById('serverTrustTitle').textContent =
+                data.status === 'changed' ? _('ssh_trust_changed') : _('ssh_trust_unknown');
+            document.getElementById('serverTrustConfirmRow').classList.remove('hidden');
+        } catch (err) {
+            box.textContent = '';
+            const error = document.getElementById('serverTrustError');
+            error.textContent = err.message || _('ssh_trust_error');
+            error.classList.remove('hidden');
+        }
+    }
+
+    async function acceptServerTrust() {
+        if (serverTrust.busy || !serverTrust.detail || !serverTrust.detail.token) return;
+        if (!document.getElementById('serverTrustVerified').checked) return;
+
+        serverTrust.busy = true;
+        const idx = serverTrust.idx;
+        const accept = document.getElementById('serverTrustAccept');
+        const spinner = document.getElementById('serverTrustSpinner');
+        const text = document.getElementById('serverTrustAcceptText');
+        const error = document.getElementById('serverTrustError');
+        accept.disabled = true;
+        spinner.classList.remove('hidden');
+        text.textContent = _('connecting');
+        error.classList.add('hidden');
+
+        try {
+            const res = await fetch(serverTrustEndpoint(idx, 'confirm'), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ token: serverTrust.detail.token, confirmed: true })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || _('ssh_trust_error'));
+            closeModal('serverTrustModal');
+            setServerTrustIcon(idx, 'trusted');
+            showToast(_('ssh_trust_trusted'), 'success');
+            pingServer(idx);
+        } catch (err) {
+            error.textContent = err.message || _('ssh_trust_error');
+            error.classList.remove('hidden');
+            accept.disabled = !document.getElementById('serverTrustVerified').checked;
+        } finally {
+            serverTrust.busy = false;
+            spinner.classList.add('hidden');
+            text.textContent = _('ssh_trust_save');
+        }
+    }
+
+    const serverTrustVerified = document.getElementById('serverTrustVerified');
+    if (serverTrustVerified) {
+        serverTrustVerified.addEventListener('change', () => {
+            document.getElementById('serverTrustAccept').disabled = !serverTrustVerified.checked;
+        });
+    }
+
+    /* ========== Ping indicators ========== */
+
+    async function pingServer(idx) {
+        const dot = document.getElementById(`ping-${idx}`);
+        const ms = document.getElementById(`ping-ms-${idx}`);
+        if (!dot) return;
+        try {
+            const res = await fetch(`/api/servers/${idx}/ping`, { credentials: 'same-origin' });
+            const data = await res.json();
+            dot.classList.remove('ping-pending');
+            const trustStatus = (data.ssh_trust_detail && data.ssh_trust_detail.status) || data.ssh_trust;
+            setServerTrustIcon(idx, trustStatus);
+            if (data.alive && data.ssh_trust !== 'trusted') {
+                dot.classList.add('ping-fail');
+                const labels = {unknown: _('ssh_trust_unknown'), changed: _('ssh_trust_changed'), error: _('ssh_trust_error')};
+                dot.title = labels[data.ssh_trust] || labels.error;
+                if (ms) ms.textContent = dot.title;
+            } else if (data.alive) {
+                dot.classList.add('ping-ok');
+                dot.title = `${data.ms} ms`;
+                if (ms) ms.textContent = `${data.ms} ms`;
+            } else {
+                dot.classList.add('ping-fail');
+                dot.title = data.error || _('offline');
+                if (ms) ms.textContent = _('offline');
+            }
+        } catch {
+            dot.classList.remove('ping-pending');
+            dot.classList.add('ping-fail');
+            if (ms) ms.textContent = _('offline');
+        }
+    }
+
+    function startAllPings() {
+        // Browsers will fan these out concurrently; the page never blocks waiting
+        // for results because each row updates independently.
+        document.querySelectorAll('.server-card').forEach(card => {
+            const idx = card.dataset.idx;
+            if (idx !== undefined) pingServer(idx);
+        });
+    }
+
+    /* ========== Сводка по серверам ========== */
+
+    /* Метрики считаются по тому же опросу, что рисует точки доступности:
+       ping-ok — узел ответил и ключ SSH подтверждён, ping-fail — ошибка
+       проверки (нет ответа, не подтверждён ключ), остальное — проверка идёт. */
+    function readServerHealth() {
+        const state = { total: 0, online: 0, failed: 0, pending: 0 };
+        document.querySelectorAll('#serverGrid .server-card').forEach(card => {
+            state.total += 1;
+            const dot = document.getElementById(`ping-${card.dataset.idx}`);
+            if (!dot) { state.pending += 1; return; }
+            if (dot.classList.contains('ping-ok')) state.online += 1;
+            else if (dot.classList.contains('ping-fail')) state.failed += 1;
+            else state.pending += 1;
+        });
+        return state;
+    }
+
+    function renderServerHealth() {
+        const state = readServerHealth();
+        const online = document.getElementById('metricServersOnline');
+        const failed = document.getElementById('metricServersErrors');
+        const summary = document.getElementById('serversSummaryText');
+        const settled = state.pending === 0;
+        if (online) online.textContent = settled ? String(state.online) : '…';
+        if (failed) failed.textContent = settled ? String(state.failed) : '…';
+        if (summary) {
+            if (!state.total) summary.textContent = 'Серверов пока нет';
+            else if (!settled) summary.textContent = `Серверов: ${state.total}. Проверяем доступность…`;
+            else summary.textContent = `Серверов: ${state.total}. Доступно: ${state.online} из ${state.total}.`;
+        }
+    }
+
+    function setupServerHealth() {
+        renderServerHealth();
+        if (!('MutationObserver' in window)) return;
+        const observer = new MutationObserver(renderServerHealth);
+        document.querySelectorAll('#serverGrid .server-card .ping-dot').forEach(dot => {
+            observer.observe(dot, { attributes: true, attributeFilter: ['class', 'title'] });
+        });
+    }
+
+    /* Повторная проверка доступности строки: сбрасываем прежний результат,
+       чтобы точка не показывала «ответил» и «ошибка» одновременно. */
+    function recheckServer(idx) {
+        const dot = document.getElementById(`ping-${idx}`);
+        if (!dot) return;
+        const ms = document.getElementById(`ping-ms-${idx}`);
+        dot.classList.remove('ping-ok', 'ping-fail');
+        dot.classList.add('ping-pending');
+        dot.title = _('ping_checking');
+        if (ms) ms.textContent = '';
+        pingServer(idx);
+    }
+
+    /* ========== Drag-and-drop reorder ========== */
+
+    let draggedCard = null;
+
+    async function persistServerOrder(grid) {
+        const newOrder = Array.from(grid.querySelectorAll('.server-card'))
+            .map(c => parseInt(c.dataset.idx, 10));
+        try {
+            const serverUids = Array.from(grid.querySelectorAll('.server-card')).map(c => c.dataset.uid || '');
+            await apiCall('/api/servers/reorder', 'POST', { order: newOrder, server_uids: serverUids });
+            showToast(_('servers_reordered'), 'success');
+            setTimeout(() => window.location.reload(), 400);
+        } catch (err) {
+            showToast(err.message, 'error');
+            window.location.reload();
+        }
+    }
+
+    async function moveServer(idx, delta) {
+        const grid = document.getElementById('serverGrid');
+        if (!grid) return;
+        const cards = Array.from(grid.querySelectorAll('.server-card'));
+        const from = cards.findIndex(c => parseInt(c.dataset.idx, 10) === idx);
+        if (from < 0) return;
+        const to = from + delta;
+        if (to < 0 || to >= cards.length) return;
+        const card = cards[from];
+        if (delta < 0) {
+            grid.insertBefore(card, cards[to]);
+        } else {
+            grid.insertBefore(card, cards[to].nextSibling);
+        }
+        await persistServerOrder(grid);
+    }
+
+    function setupDragAndDrop() {
+        const grid = document.getElementById('serverGrid');
+        if (!grid) return;
+
+        grid.addEventListener('dragstart', e => {
+            const card = e.target.closest('.server-card');
+            if (!card) return;
+            // Don't initiate drag from a button/link inside the card — those have
+            // their own click semantics (Edit/Delete/Manage).
+            if (e.target.closest('button, a')) {
+                e.preventDefault();
+                return;
+            }
+            draggedCard = card;
+            card.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            // Some browsers require this for dragstart to fire with text payload.
+            try { e.dataTransfer.setData('text/plain', card.dataset.idx); } catch {}
+        });
+
+        grid.addEventListener('dragend', e => {
+            const card = e.target.closest('.server-card');
+            if (card) card.classList.remove('dragging');
+            grid.querySelectorAll('.server-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+            draggedCard = null;
+        });
+
+        grid.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const card = e.target.closest('.server-card');
+            if (!card || card === draggedCard) return;
+            grid.querySelectorAll('.server-card.drag-over').forEach(c => {
+                if (c !== card) c.classList.remove('drag-over');
+            });
+            card.classList.add('drag-over');
+        });
+
+        grid.addEventListener('dragleave', e => {
+            const card = e.target.closest('.server-card');
+            if (card && !card.contains(e.relatedTarget)) card.classList.remove('drag-over');
+        });
+
+        grid.addEventListener('drop', async e => {
+            e.preventDefault();
+            const target = e.target.closest('.server-card');
+            grid.querySelectorAll('.server-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+            if (!target || !draggedCard || target === draggedCard) return;
+
+            // Insert before/after target depending on cursor position relative
+            // to the target's vertical centre, which feels natural in a list.
+            const rect = target.getBoundingClientRect();
+            const insertAfter = (e.clientY - rect.top) > rect.height / 2;
+            grid.insertBefore(draggedCard, insertAfter ? target.nextSibling : target);
+
+            await persistServerOrder(grid);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const grid = document.getElementById('serverGrid');
+        if (grid) grid.addEventListener('click', (event) => {
+            if (event.defaultPrevented || event.target.closest('a, button, input, select, textarea, label, [role="button"], [contenteditable]')) return;
+            const card = event.target.closest('.server-card');
+            if (!card || !grid.contains(card)) return;
+            const link = card.querySelector('.server-action-open');
+            if (link) link.click();
+        });
+        setupServerHealth();
+        startAllPings();
+        setupDragAndDrop();
+        loadRknScanFlags();
+    });
+
+    // Red "scans detected" button per server row, fed from the cached flags endpoint.
+    async function loadRknScanFlags() {
+        try {
+            const flags = await apiCall('/api/servers/rkn_scan_flags', 'GET');
+            for (const [id, f] of Object.entries(flags)) {
+                if (!f || f.agent_state === 'unknown' || !f.events24) continue;
+                const el = document.getElementById('rkn-alert-' + id);
+                if (!el) continue;
+                el.innerHTML = `<button class="btn btn-danger btn-sm" style="width:100%; font-weight:700"
+                    onclick="location.href='/server/${id}#proto-rknblock'"><svg class="btn-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> {{ _('rkn_scan_alert') }} (${f.events24})</button>`;
+                el.style.display = '';
+            }
+        } catch (e) {
+            console.warn('rkn scan flags failed:', e);
+        }
+    }
+</script>
+{% endblock %}

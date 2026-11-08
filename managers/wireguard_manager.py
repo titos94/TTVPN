@@ -1,0 +1,1265 @@
+"""
+WireGuard Protocol Manager - handles standard WireGuard protocol
+installation, configuration, and client management on remote servers.
+
+Follows the same architecture as awg_manager.py, using:
+- client/server_scripts/wireguard/ scripts as reference
+- Docker container: amneziavpn/amnezia-wg (same as AWG Legacy)
+- Standard wg/wg-quick tools
+"""
+
+import json
+import re
+import secrets
+import logging
+import time
+import functools
+import threading
+from managers.clients_table_reader import clients_table_missing
+from base64 import b64encode
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives import serialization
+from managers.clients_table import save_clients_table
+
+logger = logging.getLogger(__name__)
+
+# clientsTable read-modify-write ops must not overlap: uvicorn runs them in a
+# thread pool, and without serialization the last save wins with a stale
+# snapshot, silently dropping rows added by a concurrent op. The lost row
+# resurfaces as 'External (native app)' (the config stores no names).
+_WG_TABLE_LOCKS = {}
+_WG_TABLE_LOCKS_GUARD = threading.Lock()
+
+
+def _wg_clients_table_lock(host, container_name):
+    with _WG_TABLE_LOCKS_GUARD:
+        return _WG_TABLE_LOCKS.setdefault((host, container_name), threading.Lock())
+
+
+def _serialized_table_write(method):
+    """Hold the per-container table lock for the whole read-modify-write."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        host = getattr(self.ssh, 'host', '') or 'unknown'
+        with _wg_clients_table_lock(host, self.CONTAINER_NAME):
+            return method(self, *args, **kwargs)
+    return wrapper
+
+WG_DEFAULTS = {
+    'port': '51820',
+    'mtu': '1420',
+    'subnet_address': '10.8.2.0',
+    'subnet_cidr': '24',
+    'subnet_ip': '10.8.2.1',
+    'dns1': '1.1.1.1',
+    'dns2': '1.0.0.1',
+}
+
+
+def generate_wg_keypair():
+    """Generate a WireGuard X25519 keypair (private, public) as base64 strings."""
+    private_key = X25519PrivateKey.generate()
+    private_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    public_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    )
+    return b64encode(private_bytes).decode(), b64encode(public_bytes).decode()
+
+
+def generate_psk():
+    """Generate a WireGuard preshared key."""
+    return b64encode(secrets.token_bytes(32)).decode()
+
+
+class WireGuardManager:
+    """Manages standard WireGuard protocol installation and client management."""
+
+    PROTOCOL = 'wireguard'
+    CONTAINER_NAME = 'amnezia-wireguard'
+    DOCKER_IMAGE = 'amneziavpn/amnezia-wg:latest'
+    CONFIG_PATH = '/opt/amnezia/wireguard/wg0.conf'
+    KEY_DIR = '/opt/amnezia/wireguard'
+    CLIENTS_TABLE_PATH = '/opt/amnezia/wireguard/clientsTable'
+    BWLIMITS_PATH = '/opt/amnezia/wireguard/bwlimits'
+    INTERFACE = 'wg0'
+
+    def __init__(self, ssh_manager):
+        self.ssh = ssh_manager
+
+    # ===================== INSTALLATION =====================
+
+    def check_docker_installed(self):
+        """Check if Docker is installed and running."""
+        out, err, code = self.ssh.run_command("docker --version 2>/dev/null")
+        if code != 0:
+            return False
+        out2, _, code2 = self.ssh.run_command(
+            "systemctl is-active docker 2>/dev/null || service docker status 2>/dev/null"
+        )
+        return 'active' in out2 or 'running' in out2.lower()
+
+    def install_docker(self):
+        """Install Docker on the server."""
+        script = r"""
+if which apt-get > /dev/null 2>&1; then pm=$(which apt-get); silent_inst="-yq install"; check_pkgs="-yq update"; docker_pkg="docker.io"; dist="debian";
+elif which dnf > /dev/null 2>&1; then pm=$(which dnf); silent_inst="-yq install"; check_pkgs="-yq check-update"; docker_pkg="docker"; dist="fedora";
+elif which yum > /dev/null 2>&1; then pm=$(which yum); silent_inst="-y -q install"; check_pkgs="-y -q check-update"; docker_pkg="docker"; dist="centos";
+else echo "Packet manager not found"; exit 1; fi;
+if [ "$dist" = "debian" ]; then export DEBIAN_FRONTEND=noninteractive; fi;
+if ! command -v docker > /dev/null 2>&1; then
+  $pm $check_pkgs; $pm $silent_inst $docker_pkg;
+  sleep 5; systemctl enable --now docker; sleep 5;
+fi;
+if [ "$(systemctl is-active docker)" != "active" ]; then
+  $pm $check_pkgs; $pm $silent_inst $docker_pkg;
+  sleep 5; systemctl start docker; sleep 5;
+fi;
+docker --version
+"""
+        out, err, code = self.ssh.run_sudo_script(script, timeout=180)
+        if code != 0:
+            raise RuntimeError(f"Failed to install Docker: {err}")
+        return out
+
+    def check_container_running(self):
+        """Check if WireGuard container is running."""
+        _st_fn = getattr(self.ssh, 'docker_container_state', None)
+        if _st_fn:
+            _st = _st_fn(self.CONTAINER_NAME)
+            if _st is not None:
+                return _st[1]
+        out, _, code = self.ssh.run_sudo_command(
+            f"docker ps --filter name=^{self.CONTAINER_NAME}$ --format '{{{{.Status}}}}'"
+        )
+        return 'Up' in out
+
+    def check_protocol_installed(self):
+        """Check if protocol is installed (container exists)."""
+        _st_fn = getattr(self.ssh, 'docker_container_state', None)
+        if _st_fn:
+            _st = _st_fn(self.CONTAINER_NAME)
+            if _st is not None:
+                return _st[0]
+        out, _, code = self.ssh.run_sudo_command(
+            f"docker ps -a --filter name=^{self.CONTAINER_NAME}$ --format '{{{{.Names}}}}'"
+        )
+        return self.CONTAINER_NAME in out.strip().split('\n')
+
+    def prepare_host(self):
+        """Prepare host for container."""
+        dockerfile_folder = f"/opt/amnezia/{self.CONTAINER_NAME}"
+        script = f"""
+mkdir -p {dockerfile_folder}
+mkdir -p {self.KEY_DIR}
+if ! docker network ls | grep -q amnezia-dns-net; then
+  docker network create --driver bridge --subnet=172.29.172.0/24 --opt com.docker.network.bridge.name=amn0 amnezia-dns-net
+fi
+"""
+        out, err, code = self.ssh.run_sudo_script(script)
+        if code != 0:
+            logger.warning(f"prepare_host warning: {err}")
+        return True
+
+    def setup_firewall(self):
+        """Setup host firewall."""
+        script = """
+sysctl -w net.ipv4.ip_forward=1
+iptables -C INPUT -p icmp --icmp-type echo-request -j DROP 2>/dev/null || iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+iptables -C FORWARD -j DOCKER-USER 2>/dev/null || iptables -A FORWARD -j DOCKER-USER 2>/dev/null
+"""
+        self.ssh.run_sudo_script(script)
+        return True
+
+    def install_protocol(self, port=None):
+        """
+        Full installation of WireGuard protocol.
+        Steps: install docker -> prepare host -> build container ->
+               configure container -> run container -> setup firewall
+        """
+        if port is None:
+            port = WG_DEFAULTS['port']
+
+        results = []
+
+        # Step 1: Install Docker
+        if not self.check_docker_installed():
+            results.append("Installing Docker...")
+            self.install_docker()
+            results.append("Docker installed successfully")
+        else:
+            results.append("Docker already installed")
+
+        # Step 2: Prepare host
+        results.append("Preparing host...")
+        self.prepare_host()
+        results.append("Host prepared")
+
+        # Step 3: Remove old container if exists
+        if self.check_protocol_installed():
+            results.append("Removing old container...")
+            self.remove_container()
+            results.append("Old container removed")
+
+        # Step 4: Build container
+        results.append("Building Docker image...")
+        dockerfile_folder = f"/opt/amnezia/{self.CONTAINER_NAME}"
+
+        dockerfile_content = (
+            f"FROM {self.DOCKER_IMAGE}\n"
+            f"\n"
+            f'LABEL maintainer="AmneziaVPN"\n'
+            f"\n"
+            f"RUN apk add --no-cache curl wireguard-tools dumb-init iptables bash iproute2\n"
+            f"RUN apk --update upgrade --no-cache\n"
+            f"\n"
+            f"RUN mkdir -p /opt/amnezia\n"
+            f'RUN echo "#!/bin/bash" > /opt/amnezia/start.sh && '
+            f'echo "tail -f /dev/null" >> /opt/amnezia/start.sh\n'
+            f"RUN chmod a+x /opt/amnezia/start.sh\n"
+            f"\n"
+            f'ENTRYPOINT [ "dumb-init", "/opt/amnezia/start.sh" ]\n'
+        )
+        self.ssh.run_sudo_command(f"mkdir -p {dockerfile_folder}")
+        self.ssh.upload_file_sudo(dockerfile_content, f"{dockerfile_folder}/Dockerfile")
+
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker build --no-cache --pull -t {self.CONTAINER_NAME} {dockerfile_folder}",
+            timeout=300
+        )
+        if code != 0:
+            raise RuntimeError(f"Failed to build container: {err}")
+        results.append("Docker image built successfully")
+
+        # Step 5: Run container
+        results.append("Starting container...")
+        run_cmd = f"""docker run -d \
+--restart always \
+--privileged \
+--cap-add=NET_ADMIN \
+--cap-add=SYS_MODULE \
+-p {port}:{port}/udp \
+-v /lib/modules:/lib/modules \
+--sysctl="net.ipv4.conf.all.src_valid_mark=1" \
+--name {self.CONTAINER_NAME} \
+{self.CONTAINER_NAME}"""
+
+        out, err, code = self.ssh.run_sudo_command(run_cmd)
+        if code != 0:
+            raise RuntimeError(f"Failed to run container: {err}")
+
+        # Connect to DNS network
+        self.ssh.run_sudo_command(f"docker network connect amnezia-dns-net {self.CONTAINER_NAME}")
+
+        # Wait for container
+        results.append("Waiting for container to start...")
+        self._wait_container_running()
+        results.append("Container started")
+
+        # Step 6: Configure container
+        results.append("Configuring WireGuard...")
+        self._configure_container(port)
+        results.append("WireGuard configured")
+
+        # Step 7: Upload start script
+        results.append("Starting WireGuard service...")
+        self._upload_start_script(port)
+        results.append("WireGuard service started")
+
+        # Step 8: Setup firewall
+        results.append("Setting up firewall...")
+        self.setup_firewall()
+        results.append("Firewall configured")
+
+        return {
+            'status': 'success',
+            'protocol': self.PROTOCOL,
+            'port': port,
+            'log': results,
+        }
+
+    def _wait_container_running(self, timeout=30):
+        """Wait for a container to be in 'running' state."""
+        import time
+        last_status = 'unknown'
+        for i in range(timeout // 2):
+            out, _, _ = self.ssh.run_sudo_command(
+                f"docker inspect --format='{{{{.State.Status}}}}' {self.CONTAINER_NAME}"
+            )
+            last_status = out.strip().strip("'\"")
+            if last_status == 'running':
+                time.sleep(1)
+                return True
+            time.sleep(2)
+
+        logs_out, _, _ = self.ssh.run_sudo_command(
+            f"docker logs --tail 50 {self.CONTAINER_NAME} 2>&1"
+        )
+        raise RuntimeError(
+            f"Container {self.CONTAINER_NAME} did not start within {timeout}s "
+            f"(status: {last_status}). Logs:\n{logs_out}"
+        )
+
+    def _configure_container(self, port):
+        """Configure the WireGuard container (generate keys and server config)."""
+        subnet_ip = WG_DEFAULTS['subnet_ip']
+        subnet_cidr = WG_DEFAULTS['subnet_cidr']
+
+        config_script = f"""
+mkdir -p {self.KEY_DIR}
+cd {self.KEY_DIR}
+WIREGUARD_SERVER_PRIVATE_KEY=$(wg genkey)
+echo $WIREGUARD_SERVER_PRIVATE_KEY > {self.KEY_DIR}/wireguard_server_private_key.key
+
+WIREGUARD_SERVER_PUBLIC_KEY=$(echo $WIREGUARD_SERVER_PRIVATE_KEY | wg pubkey)
+echo $WIREGUARD_SERVER_PUBLIC_KEY > {self.KEY_DIR}/wireguard_server_public_key.key
+
+WIREGUARD_PSK=$(wg genpsk)
+echo $WIREGUARD_PSK > {self.KEY_DIR}/wireguard_psk.key
+
+cat > {self.CONFIG_PATH} <<EOF
+[Interface]
+PrivateKey = $WIREGUARD_SERVER_PRIVATE_KEY
+Address = {subnet_ip}/{subnet_cidr}
+ListenPort = {port}
+EOF
+"""
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} bash -c '{config_script}'"
+        )
+        if code != 0:
+            raise RuntimeError(f"Failed to configure container: {err}")
+
+    def _upload_start_script(self, port, subnet_ip=None, subnet_cidr=None):
+        """Upload and execute the start script inside the container."""
+        subnet_ip = subnet_ip or WG_DEFAULTS['subnet_ip']
+        subnet_cidr = subnet_cidr or WG_DEFAULTS['subnet_cidr']
+
+        start_script = f"""#!/bin/bash
+echo "WireGuard container startup"
+
+# Kill existing wg-quick if running
+wg-quick down {self.CONFIG_PATH} 2>/dev/null
+
+# Start WireGuard
+if [ -f {self.CONFIG_PATH} ]; then wg-quick up {self.CONFIG_PATH}; fi
+
+# Allow traffic on the TUN interface
+iptables -A INPUT -i {self.INTERFACE} -j ACCEPT
+iptables -A FORWARD -i {self.INTERFACE} -j ACCEPT
+iptables -A OUTPUT -o {self.INTERFACE} -j ACCEPT
+
+iptables -A FORWARD -i {self.INTERFACE} -o eth0 -s {subnet_ip}/{subnet_cidr} -j ACCEPT
+iptables -A FORWARD -i {self.INTERFACE} -o eth1 -s {subnet_ip}/{subnet_cidr} -j ACCEPT
+
+iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+iptables -t nat -A POSTROUTING -s {subnet_ip}/{subnet_cidr} -o eth0 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s {subnet_ip}/{subnet_cidr} -o eth1 -j MASQUERADE
+
+# Re-apply per-peer bandwidth limits (flat file written by the panel)
+if [ -f {self.BWLIMITS_PATH} ]; then
+    command -v tc >/dev/null 2>&1 || apk add --no-cache iproute2 >/dev/null 2>&1
+    BW={self.BWLIMITS_PATH}
+    IFACE={self.INTERFACE}
+    tc qdisc del dev $IFACE root 2>/dev/null
+    tc qdisc del dev $IFACE ingress 2>/dev/null
+    tc qdisc add dev $IFACE root handle 1: htb default 0 2>/dev/null
+    tc qdisc add dev $IFACE handle ffff: ingress 2>/dev/null
+    i=0
+    while read -r ip4 ip6 mbps; do
+      [ -z "$ip4" ] && continue
+      [ -z "$mbps" ] && continue
+      kbit=$(echo "$mbps" | awk '{{printf "%d", $1*1000}}')
+      [ "$kbit" -gt 0 ] 2>/dev/null || continue
+      i=$((i+1))
+      cid=$((100+i))
+      tc class add dev $IFACE parent 1: classid 1:$cid htb rate ${{kbit}}kbit ceil ${{kbit}}kbit 2>/dev/null
+      tc filter add dev $IFACE parent 1: protocol ip u32 match ip dst $ip4/32 flowid 1:$cid 2>/dev/null
+      tc filter add dev $IFACE parent ffff: protocol ip u32 match ip src $ip4/32 police rate ${{kbit}}kbit burst 64k drop 2>/dev/null
+    done < "$BW"
+fi
+
+tail -f /dev/null
+"""
+        self.ssh.upload_file(start_script, "/tmp/_wg_start.sh")
+        self.ssh.run_sudo_command(f"docker cp /tmp/_wg_start.sh {self.CONTAINER_NAME}:/opt/amnezia/start.sh")
+        self.ssh.run_sudo_command(f"docker exec {self.CONTAINER_NAME} chmod +x /opt/amnezia/start.sh")
+        self.ssh.run_command("rm -f /tmp/_wg_start.sh")
+
+        self.ssh.run_sudo_command(f"docker restart {self.CONTAINER_NAME}")
+        import time
+        time.sleep(5)
+
+    def remove_container(self):
+        """Remove WireGuard container."""
+        self.ssh.run_sudo_command(f"docker stop {self.CONTAINER_NAME}")
+        self.ssh.run_sudo_command(f"docker rm -fv {self.CONTAINER_NAME}")
+        self.ssh.run_sudo_command(f"docker rmi {self.CONTAINER_NAME}")
+        return True
+
+    # ===================== CLIENT MANAGEMENT =====================
+
+    def _get_clients_table(self):
+        """Get the clients table from the server."""
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} cat {self.CLIENTS_TABLE_PATH} 2>/dev/null"
+        )
+        if code != 0:
+            if clients_table_missing(self.ssh, self.CONTAINER_NAME, self.CLIENTS_TABLE_PATH):
+                return []
+            raise RuntimeError('WireGuard clientsTable could not be read')
+        if not out.strip():
+            raise RuntimeError('WireGuard clientsTable is empty (expected JSON array)')
+        try:
+            data = json.loads(out)
+            if isinstance(data, list):
+                return data
+            raise RuntimeError('WireGuard clientsTable must be a JSON array')
+        except json.JSONDecodeError:
+            raise RuntimeError('WireGuard clientsTable is not valid JSON') from None
+
+    def _save_clients_table(self, clients_table):
+        """Save the clients table to the server."""
+        save_clients_table(self.ssh, self.CONTAINER_NAME, self.CLIENTS_TABLE_PATH, clients_table)
+
+        # Keep per-peer bandwidth limits in sync (best effort)
+        try:
+            self._apply_bw_limits(clients_table)
+        except Exception as err:
+            logger.warning(f"apply bw limits warning: {err}")
+
+    # ===================== BANDWIDTH LIMITS =====================
+
+    def _apply_bw_limits(self, clients_table):
+        """Write the flat bwlimits file into the container and apply via tc.
+
+        Same mechanism as AWGManager: HTB on egress + ingress policer per
+        peer IPv4. Older containers without iproute2 get it installed on
+        the fly (apk), so no image rebuild is required.
+        """
+        lines = []
+        for client in clients_table:
+            ud = client.get('userData', {}) or {}
+            try:
+                mbps = float(ud.get('maxSpeed') or 0)
+            except (TypeError, ValueError):
+                continue
+            if mbps <= 0:
+                continue
+            ip4 = ud.get('clientIp') or ''
+            if not ip4:
+                continue
+            lines.append(f"{ip4} - {mbps:g}")
+        content = "\n".join(lines) + ("\n" if lines else "")
+        self.ssh.upload_file(content, "/tmp/_wg_bwlimits")
+        self.ssh.run_sudo_command(
+            f"docker cp /tmp/_wg_bwlimits {self.CONTAINER_NAME}:{self.BWLIMITS_PATH}"
+        )
+        self.ssh.run_command("rm -f /tmp/_wg_bwlimits")
+        if not self.check_container_running():
+            return
+        from managers.awg_manager import AWGManager
+        body = AWGManager._tc_apply_body(self.BWLIMITS_PATH, self.CONFIG_PATH)
+        # Install iproute2 on the fly for containers built before the
+        # Dockerfile included it; cheap no-op when tc already exists.
+        body = "command -v tc >/dev/null 2>&1 || apk add --no-cache iproute2 >/dev/null 2>&1\n" + body
+        self.ssh.upload_file(body, "/tmp/_wg_tc.sh")
+        # One `sh -c`: run_sudo_command only privileges the head of a chain,
+        # so `docker cp && docker exec` would run the exec unprivileged.
+        self.ssh.run_sudo_command(
+            "sh -c '"
+            f"docker cp /tmp/_wg_tc.sh {self.CONTAINER_NAME}:/tmp/_wg_tc.sh && "
+            f"docker exec {self.CONTAINER_NAME} bash /tmp/_wg_tc.sh"
+            "'",
+            timeout=60
+        )
+        self.ssh.run_command("rm -f /tmp/_wg_tc.sh")
+
+    @_serialized_table_write
+    def set_speed_limit(self, client_id, max_speed):
+        """Set per-peer bandwidth limit in Mbit/s (0 = unlimited).
+
+        Persisted in clientsTable (userData.maxSpeed); _save_clients_table
+        applies it via tc and the start script re-applies it on boot.
+        """
+        mbps = round(float(max_speed), 1)
+        if mbps < 0:
+            raise RuntimeError('max_speed must be >= 0')
+        clients_table = self._get_clients_table()
+        client = next((c for c in clients_table if c.get('clientId') == client_id), None)
+        if client is None:
+            raise RuntimeError('Client not found')
+        ud = client.setdefault('userData', {})
+        if mbps == 0:
+            ud.pop('maxSpeed', None)
+        else:
+            ud['maxSpeed'] = mbps
+        self._save_clients_table(clients_table)
+        return {'status': 'success', 'max_speed': mbps}
+
+    def _get_server_config(self):
+        """Get the server WireGuard config."""
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} cat {self.CONFIG_PATH}"
+        )
+        if code != 0:
+            raise RuntimeError(f"Failed to get server config: {err}")
+        return out
+
+    @staticmethod
+    def _sanitize_server_config(config_content):
+        """wg-quick chokes on a bare `DNS =` key in the server config (it calls
+        resolvconf, which is missing in the container). Convert active
+        `DNS = ...` lines into `# DNS = ...` comments (see AWGManager)."""
+        lines = []
+        for line in config_content.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('DNS') and '=' in stripped and not stripped.startswith('#'):
+                indent = line[:len(line) - len(line.lstrip())]
+                lines.append(f"{indent}# {stripped}")
+            else:
+                lines.append(line)
+        return '\n'.join(lines)
+
+    def save_server_config(self, config_content):
+        """Save the server WireGuard config and restart container."""
+        config_content = self._sanitize_server_config(config_content)
+        self.ssh.upload_file(config_content.replace('\r\n', '\n'), "/tmp/_wg_edit_config.conf")
+        self.ssh.run_sudo_command(f"docker cp /tmp/_wg_edit_config.conf {self.CONTAINER_NAME}:{self.CONFIG_PATH}")
+        self.ssh.run_command("rm -f /tmp/_wg_edit_config.conf")
+        self.ssh.run_sudo_command(f"docker restart {self.CONTAINER_NAME}")
+
+    def _get_server_public_key(self):
+        """Get server public key."""
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} cat {self.KEY_DIR}/wireguard_server_public_key.key"
+        )
+        if code != 0:
+            raise RuntimeError(f"Failed to get server public key: {err}")
+        return out.strip()
+
+    def _get_server_psk(self):
+        """Get server preshared key."""
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} cat {self.KEY_DIR}/wireguard_psk.key"
+        )
+        if code != 0:
+            raise RuntimeError(f"Failed to get PSK: {err}")
+        return out.strip()
+
+    def _get_listen_port(self):
+        """Extract ListenPort from server config."""
+        config = self._get_server_config()
+        for line in config.split('\n'):
+            if line.strip().startswith('ListenPort'):
+                return line.split('=', 1)[1].strip()
+        return WG_DEFAULTS['port']
+
+    def _get_used_ips(self):
+        """Get list of IPs already assigned in the config."""
+        config = self._get_server_config()
+        ips = []
+        for line in config.split('\n'):
+            line = line.strip()
+            if line.startswith('AllowedIPs'):
+                match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                if match:
+                    ips.append(match.group(1))
+            elif line.startswith('Address'):
+                match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                if match:
+                    ips.append(match.group(1))
+        return ips
+
+    def _get_reserved_ips(self):
+        """IPv4 addresses reserved in clientsTable by ANY client, disabled included.
+
+        A disabled client keeps its address, so allocation must never hand it
+        to someone else. Raises if the table cannot be read at all — silently
+        treating the reservation pool as empty would break that guarantee.
+        """
+        data = self._get_clients_table()
+        reserved = set()
+        for c in (data if isinstance(data, list) else []):
+            ud = c.get('userData') or {}
+            value = ud.get('allowedIps') or ud.get('clientIp') or ''
+            match = re.search(r'(\d+\.\d+\.\d+\.\d+)', str(value))
+            if match:
+                reserved.add(match.group(1))
+        return reserved
+
+    def _get_next_ip(self):
+        """Return the first free IP in the subnet, filling gaps left by deleted clients.
+
+        The old implementation took the last IP in file order and incremented it,
+        which produced duplicate IPs when peers were not sorted by IP and never
+        reused addresses freed by deleted clients.
+
+        Occupied = active config peers + reservations in clientsTable (disabled
+        clients keep their IPs; only deletion releases an address).
+        """
+        used_ips = set(self._get_used_ips()) | self._get_reserved_ips()
+        # The subnet comes from the live config (imported instances may use a
+        # subnet different from the default).
+        base = WG_DEFAULTS['subnet_address']
+        config = self._get_server_config()
+        for line in config.split('\n'):
+            line = line.strip()
+            if line.startswith('Address'):
+                match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                if match:
+                    base = match.group(1)
+                break
+        parts = base.split('.')
+        prefix = '.'.join(parts[:3])
+
+        used_octets = set()
+        for ip in used_ips:
+            ip_parts = ip.split('.')
+            if len(ip_parts) != 4 or '.'.join(ip_parts[:3]) != prefix:
+                continue
+            try:
+                used_octets.add(int(ip_parts[3]))
+            except ValueError:
+                continue
+
+        for octet in range(2, 255):
+            if octet not in used_octets:
+                parts[3] = str(octet)
+                return '.'.join(parts)
+
+        raise RuntimeError("No free IP addresses left in the subnet")
+
+    @staticmethod
+    def _peer_block_ip(block):
+        """Sort key for a [Peer] config block: its first AllowedIPs IPv4 address."""
+        match = re.search(r'AllowedIPs\s*=\s*(\d+)\.(\d+)\.(\d+)\.(\d+)', block)
+        if match:
+            return tuple(int(match.group(i)) for i in range(1, 5))
+        return (255, 255, 255, 255)
+
+    def _insert_peer_sorted(self, peer_section):
+        """Insert a new [Peer] section into the server config keeping peers sorted by IP.
+
+        Creates a timestamped backup of the config inside the container before
+        overwriting it, then rewrites the file with all [Peer] sections ordered
+        by their AllowedIPs address.
+        """
+        config = self._get_server_config()
+
+        # Backup current config inside the container before modifying it
+        ts = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} cp {self.CONFIG_PATH} {self.CONFIG_PATH}.bak.{ts}"
+        )
+
+        head, _, rest = config.partition('[Peer]')
+        blocks = []
+        if rest:
+            for chunk in rest.split('[Peer]'):
+                chunk = chunk.strip()
+                if chunk:
+                    blocks.append('[Peer]\n' + chunk)
+
+        blocks.append(peer_section.strip())
+        blocks.sort(key=self._peer_block_ip)
+
+        new_config = head.rstrip('\n') + '\n\n' + '\n\n'.join(blocks) + '\n'
+
+        self.ssh.upload_file(new_config, "/tmp/_wg_add_peer.conf")
+        self.ssh.run_sudo_command(
+            f"docker cp /tmp/_wg_add_peer.conf {self.CONTAINER_NAME}:{self.CONFIG_PATH}"
+        )
+        self.ssh.run_command("rm -f /tmp/_wg_add_peer.conf")
+
+    def _parse_peers_from_config(self):
+        """Parse [Peer] sections from WireGuard server config."""
+        try:
+            config = self._get_server_config()
+        except Exception:
+            return {}
+        peers = {}
+        current_key = None
+        for line in config.split('\n'):
+            line = line.strip()
+            if line == '[Peer]':
+                current_key = None
+            elif current_key is None and line.startswith('PublicKey'):
+                current_key = line.split('=', 1)[1].strip()
+                peers[current_key] = {'allowedIps': ''}
+            elif current_key and line.startswith('AllowedIPs'):
+                peers[current_key]['allowedIps'] = line.split('=', 1)[1].strip()
+        return peers
+
+    def _parse_bytes(self, size_str):
+        """Parse human readable size string into bytes."""
+        try:
+            parts = size_str.strip().split()
+            if len(parts) != 2:
+                return 0
+            val, unit = float(parts[0]), parts[1]
+            units = {'B': 1, 'KiB': 1024, 'MiB': 1024**2, 'GiB': 1024**3, 'TiB': 1024**4}
+            return int(val * units.get(unit, 1))
+        except Exception:
+            return 0
+
+    def _wg_show(self):
+        """Run 'wg show all' and parse output."""
+        out, err, code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} bash -c 'wg show all'"
+        )
+        if code != 0 or not out.strip():
+            return {}
+
+        result = {}
+        current_peer = None
+
+        for line in out.split('\n'):
+            line = line.strip()
+            if line.startswith('peer:'):
+                current_peer = line.split(':', 1)[1].strip()
+                result[current_peer] = {}
+            elif current_peer and ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                if key == 'latest handshake':
+                    result[current_peer]['latestHandshake'] = value
+                elif key == 'transfer':
+                    parts = value.split(',')
+                    if len(parts) == 2:
+                        received = parts[0].strip().replace(' received', '')
+                        sent = parts[1].strip().replace(' sent', '')
+                        result[current_peer]['dataReceived'] = received
+                        result[current_peer]['dataSent'] = sent
+                        result[current_peer]['dataReceivedBytes'] = self._parse_bytes(received)
+                        result[current_peer]['dataSentBytes'] = self._parse_bytes(sent)
+                elif key == 'allowed ips':
+                    result[current_peer]['allowedIps'] = value
+                elif key == 'endpoint':
+                    result[current_peer]['endpoint'] = '' if value in ('', '(none)') else value
+        return result
+
+    def get_traffic_snapshot(self):
+        """Exact counters; the UI's cached/human-readable values are not samples."""
+        from managers.traffic_counters import read_transfer_snapshot
+        return read_transfer_snapshot(self.ssh, self.CONTAINER_NAME, 'wg', self.INTERFACE)
+
+    def get_clients(self):
+        """Display data with cache fallbacks; accounting uses get_traffic_snapshot."""
+        clients_table = self._get_clients_table()
+
+        try:
+            wg_show_data = self._wg_show()
+        except Exception:
+            wg_show_data = {}
+
+        known_ids = set()
+        for client in clients_table:
+            client_id = client.get('clientId', '')
+            known_ids.add(client_id)
+            if client_id in wg_show_data:
+                show_data = wg_show_data[client_id]
+                user_data = client.get('userData', {})
+                user_data['latestHandshake'] = show_data.get('latestHandshake', '')
+                user_data['dataReceived'] = show_data.get('dataReceived', '')
+                user_data['dataSent'] = show_data.get('dataSent', '')
+                user_data['dataReceivedBytes'] = show_data.get('dataReceivedBytes', 0)
+                user_data['dataSentBytes'] = show_data.get('dataSentBytes', 0)
+                user_data['allowedIps'] = show_data.get('allowedIps', '')
+                user_data['endpoint'] = show_data.get('endpoint', '')
+                client['userData'] = user_data
+
+        # Pick up peers from conf not in clientsTable (native app clients)
+        try:
+            conf_peers = self._parse_peers_from_config()
+            for pub_key, peer_info in conf_peers.items():
+                if pub_key in known_ids:
+                    continue
+                show_data = wg_show_data.get(pub_key, {})
+                allowed_ip = peer_info.get('allowedIps', '') or show_data.get('allowedIps', '')
+                ip_part = ''
+                if allowed_ip:
+                    m = re.search(r'(\d+\.\d+\.\d+\.\d+)', allowed_ip)
+                    if m:
+                        ip_part = m.group(1)
+                display_name = f'External ({ip_part})' if ip_part else 'External (native app)'
+                clients_table.append({
+                    'clientId': pub_key,
+                    'userData': {
+                        'clientName': display_name,
+                        'clientPrivateKey': '',
+                        'externalClient': True,
+                        'clientIp': ip_part,
+                        'latestHandshake': show_data.get('latestHandshake', ''),
+                        'dataReceived': show_data.get('dataReceived', ''),
+                        'dataSent': show_data.get('dataSent', ''),
+                        'dataReceivedBytes': show_data.get('dataReceivedBytes', 0),
+                        'dataSentBytes': show_data.get('dataSentBytes', 0),
+                        'allowedIps': allowed_ip,
+                        'endpoint': show_data.get('endpoint', ''),
+                    }
+                })
+        except Exception as e:
+            logger.warning(f'get_clients: failed to parse conf peers: {e}')
+
+        return clients_table
+
+    @_serialized_table_write
+    def add_client(self, client_name, server_host, public_port=None):
+        """
+        Add a new client/peer to the WireGuard config.
+        Returns the client config string.
+
+        `public_port` is the port clients dial when it differs from the
+        listen port read from the server config.
+        """
+        # Generate client keys
+        client_priv_key, client_pub_key = generate_wg_keypair()
+
+        # Get server info
+        server_pub_key = self._get_server_public_key()
+        psk = self._get_server_psk()
+        port = self._get_listen_port()
+
+        # Get next available IP
+        client_ip = self._get_next_ip()
+
+        dns = self._get_dns()
+
+        mtu = WG_DEFAULTS['mtu']
+
+        peer_section = f"""
+[Peer]
+PublicKey = {client_pub_key}
+PresharedKey = {psk}
+AllowedIPs = {client_ip}/32
+
+"""
+        # Insert peer into server config, keeping peers sorted by IP (with backup)
+        self._insert_peer_sorted(peer_section)
+
+        # Sync config without restart
+        self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} bash -c 'wg syncconf {self.INTERFACE} <(wg-quick strip {self.CONFIG_PATH})'"
+        )
+
+        # Update clients table
+        clients_table = self._get_clients_table()
+        new_client = {
+            'clientId': client_pub_key,
+            'userData': {
+                'clientName': client_name,
+                'creationDate': __import__('datetime').datetime.now().isoformat(),
+                'clientPrivateKey': client_priv_key,
+                'clientIp': client_ip,
+                'psk': psk,
+                'enabled': True,
+            }
+        }
+        clients_table.append(new_client)
+        self._save_clients_table(clients_table)
+
+        # Build client config
+        client_config = f"""[Interface]
+Address = {client_ip}/32
+DNS = {dns}
+PrivateKey = {client_priv_key}
+MTU = {mtu}
+
+[Peer]
+PublicKey = {server_pub_key}
+PresharedKey = {psk}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = {server_host}:{public_port or port}
+PersistentKeepalive = 25
+"""
+        return {
+            'client_name': client_name,
+            'client_id': client_pub_key,
+            'client_ip': client_ip,
+            'config': client_config,
+        }
+
+    def get_client_config(self, client_id, server_host, port=None, public_port=None):
+        """Reconstruct client config from stored data.
+
+        `port` is optional: when omitted (direct calls) the listen port is
+        read from the server config; when passed by the panel (which already
+        knows the instance port) it is used for the Endpoint. `public_port`
+        wins over both: it is the port clients must dial.
+        """
+        clients_table = self._get_clients_table()
+        client = next((c for c in clients_table if c.get('clientId') == client_id), None)
+        if not client:
+            raise RuntimeError(f"Client {client_id} not found")
+
+        ud = client.get('userData', {})
+        if ud.get('customConfig'):
+            return ud['customConfig']
+        client_priv_key = ud.get('clientPrivateKey', '')
+        client_ip = ud.get('clientIp', '')
+        psk = ud.get('psk', '')
+
+        if not client_priv_key:
+            raise RuntimeError("Client private key not stored. Config cannot be reconstructed.")
+
+        server_pub_key = self._get_server_public_key()
+        if not psk:
+            psk = self._get_server_psk()
+
+        port = port if port is not None else self._get_listen_port()
+
+        dns = self._get_dns(ud)
+
+        mtu = WG_DEFAULTS['mtu']
+
+        config = f"""[Interface]
+Address = {client_ip}/32
+DNS = {dns}
+PrivateKey = {client_priv_key}
+MTU = {mtu}
+
+[Peer]
+PublicKey = {server_pub_key}
+PresharedKey = {psk}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = {server_host}:{public_port or port}
+PersistentKeepalive = 25
+"""
+        return config
+
+    @_serialized_table_write
+    def toggle_client(self, client_id, enable):
+        """Enable or disable a client by adding/removing their [Peer] from server config."""
+        if enable:
+            clients_table = self._get_clients_table()
+            client = next((c for c in clients_table if c.get('clientId') == client_id), None)
+            if not client:
+                raise RuntimeError(f"Client {client_id} not found")
+
+            ud = client.get('userData', {})
+            psk = ud.get('psk', '') or self._get_server_psk()
+            client_ip = ud.get('clientIp', '')
+            if client_ip:
+                # A disabled client's address stays reserved in clientsTable.
+                # Refuse to re-enable when another client owns it now.
+                for other in clients_table:
+                    if other.get('clientId') == client_id:
+                        continue
+                    other_ud = other.get('userData') or {}
+                    other_val = other_ud.get('allowedIps') or other_ud.get('clientIp') or ''
+                    m = re.search(r'(\d+\.\d+\.\d+\.\d+)', str(other_val))
+                    if m and m.group(1) == client_ip:
+                        raise RuntimeError(
+                            f"Cannot enable client: IP {client_ip} is already "
+                            f"reserved by another client. Resolve the conflict "
+                            f"(delete one of them) first.")
+                if client_ip in self._get_used_ips():
+                    raise RuntimeError(
+                        f"Cannot enable client: IP {client_ip} is already "
+                        f"present in the active server config")
+            if not client_ip:
+                client_ip = self._get_next_ip()
+                ud['clientIp'] = client_ip
+                client.setdefault('userData', {})['clientIp'] = client_ip
+
+            peer_section = f"""
+[Peer]
+PublicKey = {client_id}
+PresharedKey = {psk}
+AllowedIPs = {client_ip}/32
+
+"""
+            escaped_peer = peer_section.replace("'", "'\\''")
+            self.ssh.run_sudo_command(
+                f"docker exec -i {self.CONTAINER_NAME} bash -c 'echo \"{escaped_peer}\" >> {self.CONFIG_PATH}'"
+            )
+        else:
+            # Remove peer from server config
+            config = self._get_server_config()
+            sections = config.split('[')
+            new_sections = [s for s in sections if s.strip() and client_id not in s]
+            new_config = '[' + '['.join(new_sections)
+
+            self.ssh.upload_file(new_config, "/tmp/_wg_config.conf")
+            self.ssh.run_sudo_command(
+                f"docker cp /tmp/_wg_config.conf {self.CONTAINER_NAME}:{self.CONFIG_PATH}"
+            )
+            self.ssh.run_command("rm -f /tmp/_wg_config.conf")
+
+        # Sync config
+        _, sync_err, sync_code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} bash -c 'wg syncconf {self.INTERFACE} <(wg-quick strip {self.CONFIG_PATH})'"
+        )
+        if sync_code != 0:
+            # A failed sync with an already-updated clients table is exactly
+            # how a peer ends up half-toggled (working in wg but shown off, or
+            # vice versa) — refuse to persist the new state instead.
+            raise RuntimeError(
+                f"syncconf failed for {self.CONTAINER_NAME} (exit {sync_code}): "
+                f"{sync_err or 'no output'}. The clients table was NOT updated; "
+                f"retry the toggle.")
+
+        # Verify the toggle actually landed before persisting enabled=...:
+        # read the config back DIRECTLY from the container (no cache layers)
+        # and require the peer's presence to match the requested state.
+        # Rapid successive toggles (two HTTP requests racing the same config
+        # file) can make the first read-back see a pre-write state, so a
+        # presence mismatch gets a couple of retries before we raise.
+        peer_present = None
+        for attempt in range(3):
+            applied_config, _, vcode = self.ssh.run_sudo_command(
+                f"docker exec -i {self.CONTAINER_NAME} cat {self.CONFIG_PATH}")
+            if vcode != 0 or not (applied_config or '').strip():
+                if attempt == 2:
+                    raise RuntimeError(
+                        f"Could not read back {self.CONTAINER_NAME} config after "
+                        f"syncconf — NOT updating the clients table (verification "
+                        f"impossible).")
+                time.sleep(0.6)
+                continue
+            peer_present = client_id in applied_config
+            if peer_present == enable:
+                break
+            if attempt < 2:
+                time.sleep(0.6)
+        if enable and not peer_present:
+            raise RuntimeError(
+                f"Peer {client_id[:12]}... is absent from {self.CONTAINER_NAME} "
+                f"config right after enable — NOT updating the clients table "
+                f"(the enable did not land). Investigate the container state.")
+        if not enable and peer_present:
+            raise RuntimeError(
+                f"Peer {client_id[:12]}... is still present in "
+                f"{self.CONTAINER_NAME} config right after disable — NOT "
+                f"marking it disabled in the clients table (a half-applied "
+                f"disable once left a working peer shown as off and "
+                f"un-re-enablable).")
+
+        # The file check proves the config landed; the live interface is what
+        # clients actually talk to — verify the kernel state too (Cr0Nos's
+        # point: a verified file can still mask an interface that never
+        # updated).
+        if not self._verify_peer_on_interface(client_id, enable):
+            raise RuntimeError(
+                f"Interface {self.INTERFACE} in {self.CONTAINER_NAME} does "
+                f"not reflect the requested {'enable' if enable else 'disable'} "
+                f"for peer {client_id[:12]}... — NOT updating the clients "
+                f"table (config file and running interface disagree).")
+
+        # Update enabled status in clients table
+        clients_table = self._get_clients_table()
+        for c in clients_table:
+            if c.get('clientId') == client_id:
+                c.setdefault('userData', {})['enabled'] = enable
+                break
+        self._save_clients_table(clients_table)
+
+    @_serialized_table_write
+    def remove_client(self, client_id):
+        """Remove a client from WireGuard config."""
+        config = self._get_server_config()
+        sections = config.split('[')
+        new_sections = [s for s in sections if s.strip() and client_id not in s]
+        new_config = '[' + '['.join(new_sections)
+
+        self.ssh.upload_file(new_config, "/tmp/_wg_config.conf")
+        self.ssh.run_sudo_command(
+            f"docker cp /tmp/_wg_config.conf {self.CONTAINER_NAME}:{self.CONFIG_PATH}"
+        )
+        self.ssh.run_command("rm -f /tmp/_wg_config.conf")
+
+        # Sync config
+        _, rm_err, rm_code = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} bash -c 'wg syncconf {self.INTERFACE} <(wg-quick strip {self.CONFIG_PATH})'"
+        )
+        if rm_code != 0:
+            raise RuntimeError(
+                f"syncconf failed for {self.CONTAINER_NAME} (exit {rm_code}): "
+                f"{rm_err or 'no output'}. The clients table was NOT updated.")
+
+        applied_config, _, vcode = self.ssh.run_sudo_command(
+            f"docker exec -i {self.CONTAINER_NAME} cat {self.CONFIG_PATH}")
+        if vcode != 0 or not (applied_config or '').strip():
+            raise RuntimeError(
+                f"Could not read back {self.CONTAINER_NAME} config after "
+                f"removal — NOT dropping it from the clients table "
+                f"(verification impossible).")
+        if client_id in applied_config:
+            raise RuntimeError(
+                f"Peer {client_id[:12]}... is still present in "
+                f"{self.CONTAINER_NAME} config after removal — NOT dropping "
+                f"it from the clients table (removal did not land).")
+        # File is clean; make sure the kernel actually dropped the peer too.
+        if not self._verify_peer_on_interface(client_id, False):
+            raise RuntimeError(
+                f"Peer {client_id[:12]}... is still live on interface "
+                f"{self.INTERFACE} after removal — NOT dropping it from the "
+                f"clients table (running interface still serves the peer).")
+
+        # Update clients table
+        clients_table = self._get_clients_table()
+        clients_table = [c for c in clients_table if c.get('clientId') != client_id]
+        self._save_clients_table(clients_table)
+        return True
+
+    def _verify_peer_on_interface(self, client_id, should_be_present):
+        """Confirm via the LIVE interface (`wg show`) that the peer is in the
+        kernel state we just synced.
+
+        The config-file read-back only proves the file landed; the running
+        interface is what clients actually talk to, and the two can disagree
+        (stale file, failed reload, mid-race overwrite). Same race window
+        as the file read-back, so retry a few times before giving up.
+        """
+        for attempt in range(3):
+            show_out, _, scode = self.ssh.run_sudo_command(
+                f"docker exec -i {self.CONTAINER_NAME} wg show {self.INTERFACE}")
+            if scode == 0:
+                peer_present = client_id in (show_out or '')
+                if peer_present == should_be_present:
+                    return True
+            if attempt < 2:
+                time.sleep(0.6)
+        return False
+
+    def _get_dns(self, user_data=None):
+        """DNS servers for generated client configs.
+
+        Priority: per-client override (userData.dns) > `DNS = ...` line in the
+        server config > AmneziaDNS container address > built-in defaults.
+        """
+        if user_data and user_data.get('dns'):
+            return user_data['dns']
+        try:
+            server_config = self._get_server_config()
+            for line in server_config.split('\n'):
+                stripped = line.strip()
+                if stripped.startswith('#'):
+                    stripped = stripped.lstrip('#').strip()
+                if stripped.startswith('DNS') and '=' in stripped:
+                    return stripped.split('=', 1)[1].strip()
+        except Exception:
+            pass
+        dns1 = WG_DEFAULTS['dns1']
+        dns2 = WG_DEFAULTS['dns2']
+        out, _, _ = self.ssh.run_sudo_command("docker ps -a --filter name=^amnezia-dns$ --format '{{.Names}}'")
+        if 'amnezia-dns' in out:
+            dns1 = '172.29.172.254'
+        return f"{dns1}, {dns2}"
+
+    @_serialized_table_write
+    def save_client_config(self, client_id, config_text):
+        """Persist a manually edited client config in clientsTable
+        (userData.customConfig + userData.dns override)."""
+        config_text = (config_text or '').strip()
+        if not config_text:
+            raise RuntimeError('Config is empty')
+        clients_table = self._get_clients_table()
+        client = next((c for c in clients_table if c.get('clientId') == client_id), None)
+        if client is None:
+            raise RuntimeError('Client not found')
+        ud = client.setdefault('userData', {})
+        ud['customConfig'] = config_text
+        ud.pop('dns', None)
+        for line in config_text.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('DNS') and '=' in stripped:
+                ud['dns'] = stripped.split('=', 1)[1].strip()
+                break
+        self._save_clients_table(clients_table)
+        return {'status': 'success'}
+
+    @_serialized_table_write
+    def rename_client(self, client_id, new_name):
+        """Rename a client. The name lives only in the clientsTable
+        (userData.clientName); keys, IPs and the WireGuard config itself
+        are untouched, so existing configs keep working."""
+        clients_table = self._get_clients_table()
+        client = next((c for c in clients_table if c.get('clientId') == client_id), None)
+        if client is None:
+            # Peer added via the native app is not in the table yet —
+            # persist a minimal entry so the chosen name sticks.
+            conf_peers = self._parse_peers_from_config()
+            if client_id not in conf_peers:
+                raise RuntimeError('Client not found')
+            client = {
+                'clientId': client_id,
+                'userData': {
+                    'clientName': new_name,
+                    'clientPrivateKey': '',
+                    'externalClient': True,
+                }
+            }
+            clients_table.append(client)
+        else:
+            client.setdefault('userData', {})['clientName'] = new_name
+        self._save_clients_table(clients_table)
+        return {'status': 'success', 'name': new_name}
+
+    def get_server_status(self):
+        """Get detailed status of the WireGuard server."""
+        info = {
+            'container_exists': self.check_protocol_installed(),
+            'container_running': False,
+            'protocol': self.PROTOCOL,
+        }
+
+        if info['container_exists']:
+            info['container_running'] = self.check_container_running()
+            if info['container_running']:
+                try:
+                    config = self._get_server_config()
+                    for line in config.split('\n'):
+                        if 'ListenPort' in line:
+                            info['port'] = line.split('=')[1].strip()
+                            break
+                    # Count conf-only peers too (they render as 'External'):
+                    # the table alone understates the real peer count.
+                    clients = self._get_clients_table()
+                    known = {c.get('clientId') for c in clients}
+                    conf_peers = self._parse_peers_from_config()
+                    info['clients_count'] = len(known | set(conf_peers))
+                    info['external_count'] = len(set(conf_peers) - known)
+                except Exception as e:
+                    info['error'] = str(e)
+
+        return info
+
+    def get_traffic_stats(self):
+        """Get aggregate traffic stats for all clients."""
+        try:
+            wg_data = self._wg_show()
+        except Exception:
+            return {}
+
+        total_rx = 0
+        total_tx = 0
+        active_peers = 0
+        active_ips = []
+
+        for peer_key, data in wg_data.items():
+            rx = data.get('dataReceivedBytes', 0)
+            tx = data.get('dataSentBytes', 0)
+            total_rx += rx
+            total_tx += tx
+            if rx > 0 or tx > 0:
+                active_peers += 1
+            allowed = data.get('allowedIps', '')
+            if allowed:
+                m = re.search(r'(\d+\.\d+\.\d+\.\d+)', allowed)
+                if m:
+                    active_ips.append(m.group(1))
+
+        return {
+            'total_rx_bytes': total_rx,
+            'total_tx_bytes': total_tx,
+            'active_connections': active_peers,
+            'active_ips': active_ips,
+        }

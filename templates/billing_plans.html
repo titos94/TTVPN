@@ -1,0 +1,532 @@
+{% extends "billing_base.html" %}
+{% block title %}Тарифы{% endblock %}
+{% block head_extra %}
+<style>
+    /* Тарифы в том же языке, что панель и кабинет: одна сетка, равные высоты,
+       крупная цена, список состава, одна кнопка выбора. */
+    .bc-client .bc-plans {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        align-items: stretch;
+    }
+    /* Цвета карточки закреплены тестами: невыбранная #111a21, выбранная #1b3246. */
+    .bc-client button.bc-plan {
+        appearance: none;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 12px;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 16px;
+        color: #edf6fb;
+        background: #111a21;
+        border: 1px solid #465f70;
+        border-radius: 12px;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+    .bc-client button.bc-plan:hover { border-color: #80b6d6; }
+    .bc-client button.bc-plan.selected {
+        color: #edf6fb;
+        background: #1b3246;
+        border-color: #72b7eb;
+    }
+    .bc-client button.bc-plan:focus-visible { outline: 3px solid #b9ddff; outline-offset: 3px; }
+
+    .bc-plan__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .bc-plan__name {
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        line-height: 1.3;
+    }
+    .bc-plan__picked { display: none; flex: 0 0 auto; white-space: nowrap; }
+    .bc-plan.selected .bc-plan__picked {
+        display: inline-block;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+    .bc-plan__price { display: block; }
+    .bc-plan__price .bc-price {
+        font-size: 1.6rem;
+        line-height: 1.1;
+        letter-spacing: -.02em;
+        font-variant-numeric: tabular-nums;
+    }
+    .bc-plan__price .bc-price small {
+        display: block;
+        margin-top: 4px;
+        text-align: left;
+        font-size: .74rem;
+        font-weight: 400;
+        color: var(--text-muted);
+    }
+    .bc-plan__list { display: grid; gap: 6px; }
+    .bc-plan__item {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        color: var(--text-secondary);
+        font-size: .84rem;
+        line-height: 1.45;
+    }
+    .bc-plan__item svg {
+        flex: 0 0 auto;
+        width: 14px;
+        height: 14px;
+        margin-top: 3px;
+        color: var(--accent-light);
+    }
+    .bc-plan__cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: auto;
+        padding: 8px 12px;
+        border: 1px solid #333348;
+        border-radius: 8px;
+        background: #1d1d29;
+        color: var(--text-secondary);
+        font-size: .85rem;
+        font-weight: 600;
+    }
+    .bc-plan.selected .bc-plan__cta {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+    }
+
+    /* Пустое состояние: та же панель, что .empty-state в панели. */
+    .bc-client .tt-empty {
+        display: grid;
+        justify-items: center;
+        gap: 6px;
+        padding: 34px 20px;
+        border: 1px dashed var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-secondary);
+        text-align: center;
+        color: var(--text-secondary);
+    }
+    .bc-client .tt-empty__icon {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        margin-bottom: 6px;
+        border-radius: 12px;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+    .bc-client .tt-empty__icon svg { width: 22px; height: 22px; }
+    .bc-client .tt-empty__title { color: var(--text-primary); font-weight: 700; font-size: .98rem; }
+    .bc-client .tt-empty__note { max-width: 42ch; font-size: .85rem; line-height: 1.5; }
+
+    .bc-client .bc-promo input { min-width: 0; }
+    @media (max-width: 620px) {
+        .bc-client .bc-plans { gap: 10px; }
+        .bc-client button.bc-plan { padding: 14px; }
+        .bc-plan__price .bc-price { font-size: 1.45rem; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+{% set ns = namespace(max_month=0) %}
+{% for plan in plans %}
+    {% if plan.days and plan.days > 0 %}
+        {% set per = (plan.price_kopecks * 30 / plan.days) | round(0, 'common') | int %}
+        {% if per > ns.max_month %}{% set ns.max_month = per %}{% endif %}
+    {% endif %}
+{% endfor %}
+<div class="bc-card">
+    <div class="tt-eyebrow">Тарифы</div>
+    <h1>{{ 'Продление подписки' if active else 'Подключение' }}</h1>
+    <p class="bc-muted" style="margin-top:0;">
+        {% if active %}Сейчас активно до <b>{{ expiry }}</b>. Новый срок добавится к этой дате.
+        {% else %}Выберите тариф и перейдите к оплате.{% endif %}
+    </p>
+
+    {% if trial.available %}
+    <div class="bc-trial">
+        <div>
+            <b>Пробный период</b>
+            <div class="bc-muted">Бесплатно {{ trial.days }} дней. Лимит устройств — {{ trial.devices }}.</div>
+        </div>
+        <button class="bc-btn ghost" type="button" id="trialBtn" onclick="startTrial()">Активировать</button>
+    </div>
+    {% elif trial.configured and trial.used %}
+    <p class="bc-muted">Пробный период уже использован.</p>
+    {% endif %}
+
+    <div class="bc-error" id="err"></div>
+    <div class="bc-ok" id="ok"></div>
+</div>
+
+{% if not plans %}
+<div class="bc-card">
+    <h2>Выберите тариф</h2>
+    <div class="tt-empty" role="status">
+        <span class="tt-empty__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 7h16M4 12h16M4 17h16"/>
+            </svg>
+        </span>
+        <span class="tt-empty__title">Тарифы пока не настроены</span>
+        <span class="tt-empty__note">Список тарифов появится, когда администратор их добавит. Обновите страницу позже.</span>
+    </div>
+</div>
+{% else %}
+<div class="bc-card">
+    <h2>Выберите тариф</h2>
+    <div class="bc-plans" role="group" aria-label="Тарифы">
+        {% for plan in plans %}
+        {% set is_selected = (plan.id == selected_plan) if selected_plan else loop.first %}
+        <button type="button" class="bc-plan{% if is_selected %} selected{% endif %}" data-plan="{{ plan.id }}"
+             aria-pressed="{{ 'true' if is_selected else 'false' }}" onclick="selectPlan(this.dataset.plan)">
+            <span class="bc-plan__head">
+                <b class="bc-plan__name">{{ plan.name }}</b>
+                <span class="bc-badge bc-plan__picked">Выбрано</span>
+            </span>
+            <span class="bc-plan__price">
+                <span class="bc-price">
+                    <span data-price>{{ format_money(plan.price_kopecks) }}</span>
+                    <small data-old-price style="display:none;"></small>
+                </span>
+            </span>
+            <span class="bc-plan__list">
+                <span class="bc-plan__item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                    {{ plan.days }} дней доступа
+                </span>
+                {% if plan.device_limit %}
+                <span class="bc-plan__item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2"/><path d="M18 8h3v12h-9v-4"/></svg>
+                    До {{ plan.device_limit }} устройств
+                </span>
+                {% endif %}
+                {% if plan.description and 'устройств' not in plan.description %}
+                <span class="bc-plan__item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>
+                    {{ plan.description }}
+                </span>
+                {% endif %}
+            </span>
+            <span class="bc-plan__cta">Выбрать</span>
+        </button>
+        {% endfor %}
+    </div>
+</div>
+
+{% if plans|length > 1 %}
+<div class="bc-card">
+    <h2>Примерная стоимость за 30 дней</h2>
+    <p class="bc-muted" style="margin-top:0;">
+        Пересчёт на 30 дней — чтобы сравнить тарифы с разным сроком.
+    </p>
+    <div class="bc-infographic" style="margin-top:0;">
+        {% for plan in plans %}
+        {% if plan.days and plan.days > 0 %}
+        {% set per = (plan.price_kopecks * 30 / plan.days) | round(0, 'common') | int %}
+        {% set width = [((per * 100 / ns.max_month) | round(1)), 6] | max if ns.max_month else 0 %}
+        <div class="bc-bar">
+            <span class="bc-bar__name">{{ plan.name }}</span>
+            <span class="bc-bar__track" aria-hidden="true">
+                <span class="bc-bar__fill" style="--bc-bar: {{ width }}%"></span>
+            </span>
+            <span class="bc-bar__value">≈ {{ format_money(per) }}<small> / 30 дней</small></span>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="bc-card">
+    <h2>Промокод</h2>
+    <p class="bc-muted" style="margin-top:0;">Если у вас есть код, примените его до оплаты.</p>
+    <div class="bc-field" style="margin-bottom:0;">
+        <label for="promoCode">Промокод</label>
+        <div class="bc-promo">
+            <input type="text" id="promoCode" placeholder="Необязательно"
+                   value="{{ promo_code }}" autocomplete="off" aria-describedby="promoHint">
+            <button class="bc-btn ghost" type="button" onclick="applyPromo()">Применить</button>
+        </div>
+        <div class="bc-hint" id="promoHint">Скидка и бонусные дни применятся при оплате.</div>
+    </div>
+</div>
+
+<div class="bc-card">
+    <h2>К оплате</h2>
+    <div class="bc-row">
+        <span>Стоимость</span><b id="totalPrice">—</b>
+    </div>
+    <div class="bc-row">
+        <span>Срок действия</span><b id="totalExpiry">—</b>
+    </div>
+    <div class="bc-hint" id="termHint" style="margin:10px 0 14px;"></div>
+    <button class="bc-btn" type="button" id="buyBtn" style="width:100%;" onclick="buy()">
+        Перейти к оплате
+    </button>
+    <div class="bc-hint bc-center" style="margin-top:10px;">
+        Следующий шаг — переход к оплате в платёжном сервисе.
+    </div>
+
+    <div class="bc-infographic">
+        <div class="bc-sep"></div>
+        <div class="bc-muted">Что будет после оплаты</div>
+        <div class="bc-flow">
+            <div class="bc-flow__item">
+                <span class="bc-flow__n">1</span>
+                <span class="bc-flow__title">Оплатить</span>
+                <span class="bc-flow__note">На странице платёжного сервиса.</span>
+            </div>
+            <span class="bc-flow__arrow" aria-hidden="true">→</span>
+            <div class="bc-flow__item">
+                <span class="bc-flow__n">2</span>
+                <span class="bc-flow__title">Получить ключ</span>
+                <span class="bc-flow__note">Ключ и QR-код появятся в «Подключениях».</span>
+            </div>
+            <span class="bc-flow__arrow" aria-hidden="true">→</span>
+            <div class="bc-flow__item">
+                <span class="bc-flow__n">3</span>
+                <span class="bc-flow__title">Подключиться</span>
+                <span class="bc-flow__note">Импортируйте ключ в Amnezia.</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+    const PLAN_DAYS = {{ plan_days | tojson }};
+    const BASE_ISO = {{ base_iso | tojson }};
+    const PRICES = {
+        {% for plan in plans %}{{ plan.id | string | tojson }}: {{ plan.price_kopecks }}{% if not loop.last %},{% endif %}{% endfor %}
+    };
+    let selectedId = {{ (selected_plan or (plans[0].id if plans else '')) | tojson }};
+    let applied = null;
+    let promoRequestVersion = 0;
+    let promoPending = false;
+    let buyPending = false;
+    let buyNavigationPending = false;
+
+    function updateBuyState() {
+        const btn = document.getElementById('buyBtn');
+        if (btn) btn.disabled = promoPending || buyPending;
+    }
+
+    function cancelPromoCheck() {
+        promoRequestVersion++;
+        promoPending = false;
+        updateBuyState();
+    }
+
+    function money(kopecks) {
+        const rub = kopecks / 100;
+        return (Number.isInteger(rub) ? rub : rub.toFixed(2).replace('.', ',')) + ' ₽';
+    }
+
+    function render() {
+        if (!selectedId) return;
+        const planDays = PLAN_DAYS[selectedId] || 0;
+        let days = applied && applied.days_granted ? applied.days_granted + (applied.bonus_days || 0)
+            : planDays + ((applied && applied.bonus_days) || 0);
+        const price = applied && !applied.needs_plan ? applied.final_kopecks : PRICES[selectedId];
+        const expires = bcAddDays(BASE_ISO, days);
+
+        document.querySelectorAll('[data-plan]').forEach(el => {
+            el.classList.toggle('selected', el.dataset.plan === selectedId);
+            el.setAttribute('aria-pressed', el.dataset.plan === selectedId ? 'true' : 'false');
+            const priceEl = el.querySelector('[data-price]');
+            const oldEl = el.querySelector('[data-old-price]');
+            const own = PRICES[el.dataset.plan];
+            if (el.dataset.plan === selectedId && applied && !applied.needs_plan && applied.final_kopecks !== own) {
+                priceEl.textContent = money(applied.final_kopecks);
+                oldEl.textContent = money(own);
+                oldEl.style.display = 'block';
+                oldEl.style.textDecoration = 'line-through';
+            } else {
+                priceEl.textContent = money(own);
+                oldEl.style.display = 'none';
+            }
+        });
+
+        document.getElementById('totalPrice').textContent = money(price);
+        document.getElementById('totalExpiry').textContent = 'до ' + expires;
+        const buyBtn = document.getElementById('buyBtn');
+        if (buyBtn) {
+            buyBtn.textContent = (applied && applied.can_activate)
+                ? 'Активировать +' + applied.days_granted + ' дн. бесплатно'
+                : 'Перейти к оплате';
+        }
+
+        const hints = [];
+        if (applied) {
+            hints.push('Промокод ' + applied.code + ': ' + applied.label + '.');
+            if (applied.bonus_days) {
+                hints.push('Бонусные дни добавляются к тарифу после успешной оплаты.');
+            } else if (applied.days_granted) {
+                hints.push('Бесплатный доступ на ' + applied.days_granted + ' дн. — оплата не потребуется.');
+            }
+        } else {
+            hints.push('Срок считается от ' +
+                (BASE_ISO && new Date(BASE_ISO) > new Date() ? 'текущей даты окончания' : 'сегодня'));
+        }
+        document.getElementById('termHint').textContent = hints.join(' ');
+    }
+
+    function selectPlan(id) {
+        const changed = id !== selectedId;
+        if (changed) cancelPromoCheck();
+        selectedId = id;
+        // Every result is calculated for a specific tariff and must be rechecked.
+        if (changed) applied = null;
+        if (changed && document.getElementById('promoCode')?.value.trim()) {
+            document.getElementById('promoHint').textContent =
+                'Тариф изменён — нажмите «Применить», чтобы пересчитать промокод.';
+        }
+        render();
+    }
+
+    async function applyPromo(allowRetry) {
+        const err = document.getElementById('err');
+        const hint = document.getElementById('promoHint');
+        const code = (document.getElementById('promoCode').value || '').trim();
+        const planId = selectedId;
+        const requestVersion = ++promoRequestVersion;
+        promoPending = false;
+        err.classList.remove('show');
+        applied = null;
+        render();
+        if (!code) {
+            updateBuyState();
+            hint.textContent = 'Скидка и бонусные дни применятся при оплате.';
+            return;
+        }
+        promoPending = true;
+        updateBuyState();
+        hint.textContent = 'Проверяем промокод…';
+        try {
+            const data = await bcPost('/api/billing/promo/check', {
+                promo_code: code, plan_id: planId
+            });
+            if (requestVersion !== promoRequestVersion || selectedId !== planId) return;
+            applied = data;
+            sessionStorage.setItem('bc_promo', data.code);
+            hint.textContent = 'Промокод ' + data.code + ' принят: ' + data.label;
+            render();
+        } catch (e) {
+            if (requestVersion !== promoRequestVersion || selectedId !== planId) return;
+            // A code can be tied to one tariff. Rather than dead-ending the
+            // customer, switch to that tariff and re-check the code.
+            if (allowRetry !== false && e.status === 409 && e.payload && e.payload.plan_id) {
+                const bound = e.payload.plan_id;
+                if (bound !== selectedId) {
+                    selectPlan(bound);
+                    hint.textContent = 'Промокод действует на этот тариф — выбрали его.';
+                    return applyPromo(false);
+                }
+            }
+            applied = null;
+            sessionStorage.removeItem('bc_promo');
+            hint.textContent = 'Скидка и бонусные дни применятся при оплате.';
+            bcShowError(err, e.message);
+            render();
+        } finally {
+            if (requestVersion === promoRequestVersion) {
+                promoPending = false;
+                updateBuyState();
+            }
+        }
+    }
+
+    async function buy() {
+        if (promoPending || buyPending) return;
+        const err = document.getElementById('err');
+        err.classList.remove('show');
+        buyPending = true;
+        updateBuyState();
+        try {
+            if (applied && applied.can_activate) {
+                const data = await bcPost('/api/billing/promo/activate', { promo_code: applied.code });
+                buyNavigationPending = true;
+                window.location.href = data.redirect || '/cabinet/connections';
+                return;
+            }
+            const payload = { plan_id: selectedId };
+            if (applied && applied.code) payload.promo_code = applied.code;
+            const data = await bcPost('/api/billing/checkout', payload);
+            if (data.free) {
+                buyNavigationPending = true;
+                window.location.href = data.redirect || '/cabinet/connections';
+            } else if (data.confirmation_url) {
+                buyNavigationPending = true;
+                window.location.href = data.confirmation_url;
+            } else {
+                throw new Error('Не удалось создать платёж');
+            }
+        } catch (e) {
+            bcShowError(err, e.message);
+            buyNavigationPending = false;
+            buyPending = false;
+            updateBuyState();
+        }
+    }
+
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted && buyNavigationPending) {
+            buyNavigationPending = false;
+            buyPending = false;
+            updateBuyState();
+        }
+    });
+
+    async function startTrial() {
+        const err = document.getElementById('err');
+        const btn = document.getElementById('trialBtn');
+        err.classList.remove('show');
+        btn.disabled = true;
+        try {
+            const data = await bcPost('/api/billing/trial', {});
+            window.location.href = data.redirect || '/cabinet/connections';
+        } catch (e) {
+            bcShowError(err, e.message);
+            btn.disabled = false;
+        }
+    }
+
+    document.getElementById('promoCode')?.addEventListener('input', () => {
+        cancelPromoCheck();
+        applied = null;
+        document.getElementById('promoHint').textContent = 'Нажмите «Применить», чтобы проверить промокод.';
+        render();
+    });
+    document.getElementById('promoCode')?.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); applyPromo(); }
+    });
+
+    (function init() {
+        render();
+        const field = document.getElementById('promoCode');
+        const fromUrl = {{ promo_code | tojson }};
+        const stored = sessionStorage.getItem('bc_promo') || '';
+        const code = fromUrl || stored;
+        if (code && field) {
+            field.value = code;
+            applyPromo();
+        }
+    })();
+</script>
+{% endblock %}

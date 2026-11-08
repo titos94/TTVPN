@@ -1,0 +1,54 @@
+services:
+  amnezia_panel:
+    build:
+      context: .
+    image: amnezia-panel-billing:latest
+    container_name: amnezia_panel
+    env_file: .env
+    environment:
+      TTVPN_PRODUCTION: "1"
+    volumes:
+      - /opt/amnezia-web-panel/data:/app/data
+    networks:
+      - amnezia_panel_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.connect(('localhost', 5000)); s.close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  ttvpn_monitor:
+    image: amnezia-panel-billing:latest
+    container_name: ttvpn_monitor
+    command: ["python3", "monitor_service.py"]
+    environment:
+      TTVPN_MONITOR_TOKEN: ${TTVPN_MONITOR_TOKEN:?TTVPN_MONITOR_TOKEN is required}
+      TTVPN_MONITOR_PANEL_URL: "http://amnezia_panel:5000/login"
+      TTVPN_MONITOR_PROXY_URL: "http://ttvpn-caddy"
+      TTVPN_MONITOR_BIND: "0.0.0.0:5001"
+      PYTHONDONTWRITEBYTECODE: "1"
+    networks:
+      - amnezia_panel_net
+    read_only: true
+    user: "65534:65534"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    mem_limit: 128m
+    pids_limit: 64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/healthz', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  amnezia_panel_net:
+    external: true

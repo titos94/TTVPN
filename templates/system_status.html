@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title_extra %}— Состояние{% endblock %}
+{% block head_extra %}
+<style>
+    .status-page { max-width: 1120px; min-width: 0; margin: 0 auto; }
+    .status-page * { min-width: 0; overflow-wrap: anywhere; }
+    .status-heading { margin-bottom: 24px; }
+    .status-heading h1 { margin: 0 0 8px; font-size: clamp(1.5rem, 4vw, 2rem); }
+    .status-heading p, .status-note { color: var(--text-secondary); line-height: 1.5; margin: 0; }
+    .status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .status-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; }
+    .status-card h2 { font-size: 1rem; margin: 0 0 14px; }
+    .status-card--wide { grid-column: 1 / -1; }
+    .status-value { font-size: 1.15rem; font-weight: 700; margin: 0 0 8px; }
+    .status-rows { margin: 0; }
+    .status-rows div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--border-color); }
+    .status-rows dt { color: var(--text-secondary); }
+    .status-rows dd { margin: 0; font-weight: 600; }
+    .status-settings { display: inline-block; margin-top: 14px; color: var(--text-accent) !important; text-decoration: underline !important; }
+    @media (max-width: 600px) {
+        .status-grid { grid-template-columns: minmax(0, 1fr); }
+        .status-card--wide { grid-column: auto; }
+        .status-card { padding: 16px; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="status-page">
+    <header class="status-heading">
+        <h1>Состояние</h1>
+        <p>Локальные показатели мониторинга. Они не отражают состояние всей инфраструктуры.</p>
+    </header>
+    <div class="status-grid">
+        <section class="status-card status-card--wide" aria-labelledby="monitor-title">
+            <h2 id="monitor-title">Локальный монитор</h2>
+            <div role="status" aria-live="polite">
+                <p class="status-value" id="monitor-state">Загрузка данных</p>
+                <p class="status-note" id="monitor-detail">Ожидание ответа монитора.</p>
+                <p class="status-note" id="monitor-time">Время проверки: нет данных</p>
+            </div>
+        </section>
+        <section class="status-card" aria-labelledby="resources-title">
+            <h2 id="resources-title">Ресурсы</h2>
+            <dl class="status-rows">
+                <div><dt>Свободное место на диске</dt><dd id="monitor-disk">Нет данных</dd></div>
+                <div><dt>Нагрузка за 1 минуту</dt><dd id="monitor-load">Нет данных</dd></div>
+            </dl>
+            <p class="status-note">Диск проверяется на томе с данными панели.</p>
+        </section>
+        <section class="status-card" aria-labelledby="infrastructure-title">
+            <h2 id="infrastructure-title">Сервисы и VPN</h2>
+            <dl class="status-rows">
+                <div><dt>Панель (HTTP)</dt><dd id="monitor-panel">Нет данных</dd></div>
+                <div><dt>Caddy (HTTPS-прокси)</dt><dd id="monitor-proxy">Нет данных</dd></div>
+                <div><dt>Telegram-бот</dt><dd id="monitor-telegram">Нет данных</dd></div>
+                <div><dt>VPN-серверы</dt><dd id="monitor-vpn">Нет данных</dd></div>
+                <div><dt>Маршрутизация и подключения</dt><dd>Нет данных</dd></div>
+            </dl>
+            <p class="status-note">Монитор изолирован: у него нет доступа к платежам, ключам и данным пользователей. VPN-узлы проверяются только на доступность SSH-порта.</p>
+        </section>
+        <section class="status-card status-card--wide" aria-labelledby="analysis-title">
+            <h2 id="analysis-title">Анализ ИИ</h2>
+            <p class="status-value">Не настроен</p>
+            <p class="status-note">Анализ не выполняется, данные модели не передаются. Заключения и автоматические действия на этой странице не предусмотрены.</p>
+            <a class="status-settings" href="/settings">Перейти к настройкам</a>
+        </section>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    (async function () {
+        const set = (id, value) => {
+            const node = document.getElementById(id);
+            if (node) node.textContent = value;
+        };
+        const state = (title, detail) => {
+            set('monitor-state', title);
+            set('monitor-detail', detail);
+        };
+        const stateLabels = {ok: 'В норме', degraded: 'Деградация', down: 'Недоступен', unknown: 'Нет данных'};
+        const issueLabels = {
+            panel_down: 'Панель не отвечает по HTTP.',
+            panel_degraded: 'Панель отвечает с ошибкой.',
+            proxy_down: 'Caddy не отвечает.',
+            proxy_degraded: 'Caddy отвечает с ошибкой.',
+            telegram_down: 'Telegram-бот включён, но не работает.',
+            vpn_nodes_down: 'Часть VPN-узлов недоступна по SSH-порту.',
+            vpn_nodes_degraded: 'Часть VPN-узлов работает нестабильно.',
+            vpn_nodes_unknown: 'По VPN-узлам нет достоверных данных.',
+            panel_data_stale: 'Панель давно не присылала показатели.',
+            panel_data_missing: 'Панель ещё не присылала показатели.',
+            monitor_unreachable: 'Изолированный монитор не отвечает.'
+        };
+        try {
+            const response = await fetch('/api/assistant/monitor', {method: 'GET', cache: 'no-store', credentials: 'same-origin'});
+            if (response.status === 401) {
+                state('Требуется вход', 'Сессия завершилась. Войдите снова для просмотра состояния.');
+                return;
+            }
+            if (response.status === 403) {
+                state('Доступ запрещён', 'Для просмотра состояния нужны права администратора.');
+                return;
+            }
+            if (!response.ok) throw new Error('unavailable');
+            const report = await response.json();
+            if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('invalid');
+            if (report.status === 'disabled') {
+                state('Монитор отключён', 'Данные не собираются. Для безопасного включения требуется изоляция доступа.');
+                return;
+            }
+            if (report.status === 'starting') {
+                state('Монитор запускается', 'Результатов проверки пока нет.');
+                return;
+            }
+            if (report.status !== 'ok' && report.status !== 'attention' && report.status !== 'unknown') {
+                state('Состояние неизвестно', 'Нет достоверного результата проверки.');
+                return;
+            }
+            const checked = typeof report.checked_at === 'string' ? Date.parse(report.checked_at) : NaN;
+            if (Number.isFinite(checked)) {
+                set('monitor-time', 'Время проверки: ' + new Date(checked).toLocaleString('ru-RU'));
+            }
+            const age = Date.now() - checked;
+            const isolated = report.monitor === 'isolated';
+            if (isolated && !Number.isFinite(checked)) {
+                state('Состояние неизвестно', 'Монитор не сообщил время проверки.');
+                return;
+            }
+            if (!isolated && (!Number.isFinite(checked) || age > 180000 || age < -30000)) {
+                state('Данные устарели или время неизвестно', 'Показатели не отображаются до получения актуальной проверки.');
+                return;
+            }
+            if (isolated) {
+                const components = new Map();
+                if (Array.isArray(report.components)) {
+                    report.components.forEach((item) => {
+                        if (item && typeof item === 'object' && !Array.isArray(item) && typeof item.component === 'string') {
+                            components.set(item.component, item);
+                        }
+                    });
+                }
+                const health = report.health && typeof report.health === 'object' && !Array.isArray(report.health) ? report.health : {};
+                const issues = Array.isArray(report.issues) ? report.issues.filter((code) => Object.prototype.hasOwnProperty.call(issueLabels, code)) : [];
+                const detail = issues.length
+                    ? issues.slice(0, 2).map((code) => issueLabels[code]).join(' ')
+                    : 'Изолированный монитор получил свежие обезличенные показатели.';
+                state(report.status === 'attention' ? 'Требуется внимание'
+                    : report.status === 'ok' ? 'Все проверки в норме' : 'Недостаточно данных', detail);
+
+                const panel = components.get('panel');
+                if (panel) set('monitor-panel', stateLabels[panel.state] || 'Нет данных');
+                const proxy = components.get('proxy');
+                if (proxy) set('monitor-proxy', stateLabels[proxy.state] || 'Нет данных');
+
+                const telegram = components.get('telegram');
+                if (typeof health.telegram_enabled === 'boolean' && !health.telegram_enabled) {
+                    set('monitor-telegram', 'Отключён');
+                } else if (telegram) {
+                    set('monitor-telegram', telegram.state === 'ok' ? 'Работает' : stateLabels[telegram.state] || 'Нет данных');
+                }
+
+                const vpn = components.get('vpn_node');
+                if (vpn) {
+                    const total = ['ok', 'degraded', 'down', 'unknown'].reduce((sum, key) => sum + (Number.isInteger(vpn[key]) ? vpn[key] : 0), 0);
+                    if (!total) {
+                        set('monitor-vpn', 'Узлы не настроены');
+                    } else {
+                        let text = vpn.ok + ' из ' + total + ' доступны';
+                        if (vpn.down) text += ', недоступен ' + vpn.down;
+                        if (vpn.unknown) text += ', без данных ' + vpn.unknown;
+                        set('monitor-vpn', text);
+                    }
+                }
+
+                if (typeof health.disk_free_percent === 'number' && Number.isFinite(health.disk_free_percent) && health.disk_free_percent >= 0 && health.disk_free_percent <= 100) {
+                    set('monitor-disk', health.disk_free_percent.toLocaleString('ru-RU') + ' %');
+                }
+                if (typeof health.load_average_1m === 'number' && Number.isFinite(health.load_average_1m) && health.load_average_1m >= 0) {
+                    set('monitor-load', health.load_average_1m.toLocaleString('ru-RU'));
+                }
+                return;
+            }
+
+            state(report.status === 'attention' ? 'Требуется внимание' : 'Локальная проверка выполнена',
+                report.status === 'attention' ? 'Монитор сообщил о проблеме в локальной проверке.' : 'Это не проверка всей системы.');
+            const health = report.health;
+            if (!health || typeof health !== 'object' || Array.isArray(health)) return;
+            if (typeof health.disk_free_percent === 'number' && Number.isFinite(health.disk_free_percent) && health.disk_free_percent >= 0 && health.disk_free_percent <= 100) {
+                set('monitor-disk', health.disk_free_percent.toLocaleString('ru-RU') + ' %');
+            }
+            if (typeof health.load_average_1m === 'number' && Number.isFinite(health.load_average_1m) && health.load_average_1m >= 0) {
+                set('monitor-load', health.load_average_1m.toLocaleString('ru-RU'));
+            }
+            const telegram = {running: 'Работает', stopped: 'Остановлен', disabled: 'Отключён'};
+            if (Object.prototype.hasOwnProperty.call(telegram, health.telegram)) set('monitor-telegram', telegram[health.telegram]);
+        } catch (_) {
+            state('Монитор недоступен', 'Не удалось получить данные монитора.');
+        }
+    })();
+</script>
+{% endblock %}

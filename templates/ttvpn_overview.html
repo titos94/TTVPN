@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title_extra %} — Обзор{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/css/ttvpn-shell.css?v={{ static_v }}">
+{% endblock %}
+
+{% block body_shell %}
+{% set overview = overview or {} %}
+{% set brand = brand or {} %}
+{% macro value(item) -%}{{ item if item is defined and item is not none and item != '' else 'Нет данных' }}{%- endmacro %}
+{% macro icon(name) -%}
+<span aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{% if name == 'overview' %}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>{% elif name == 'servers' %}<rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>{% elif name == 'users' %}<path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>{% elif name == 'billing' %}<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>{% elif name == 'settings' %}<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>{% elif name == 'link' %}<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>{% elif name == 'logout' %}<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>{% elif name == 'more' %}<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>{% endif %}</svg></span>
+{%- endmacro %}
+{% macro navigation() %}
+    <a class="tt-nav-link tt-nav-link--active" href="/overview-preview" aria-current="page">{{ icon('overview') }} Обзор</a>
+    <a class="tt-nav-link" href="/">{{ icon('servers') }} Серверы</a>
+    {% if current_user and current_user.role in ['admin', 'support'] %}
+    <a class="tt-nav-link" href="/users">{{ icon('users') }} Пользователи</a>
+    {% endif %}
+    {% if current_user and current_user.role == 'admin' %}
+    {% if billing_available %}<a class="tt-nav-link" href="/billing-admin">{{ icon('billing') }} Биллинг</a>{% endif %}
+    <a class="tt-nav-link" href="/settings">{{ icon('settings') }} Настройки</a>
+    {% endif %}
+    <a class="tt-nav-link" href="/my">{{ icon('link') }} Мои подключения</a>
+    <a class="tt-nav-link" href="/logout">{{ icon('logout') }} Выйти</a>
+{% endmacro %}
+<div class="tt-overview" lang="ru" dir="ltr">
+    <aside class="tt-sidebar">
+        <a class="tt-brand" href="/" aria-label="TTVPN — серверы">
+            {% if brand.ready and brand.logo_url %}<img src="{{ brand.logo_url }}" alt="TTVPN">{% else %}<span>TTVPN</span>{% endif %}
+        </a>
+        <div class="tt-sidebar-label">Панель управления</div>
+        <nav class="tt-nav" aria-label="Основная навигация">{{ navigation() }}</nav>
+        <div class="tt-sidebar-bottom">TTVPN <span> / </span> Панель управления</div>
+    </aside>
+
+    <main class="tt-workspace">
+        <header class="tt-topbar">
+            <div class="tt-topbar-left">
+                <button class="tt-sidebar-toggle" type="button" aria-label="Компактная боковая панель" aria-pressed="false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
+                <span class="tt-topbar-caption">Панель управления</span>
+                <span class="tt-topbar-divider">/</span>
+                <strong class="tt-topbar-title">Обзор</strong>
+            </div>
+            <button class="tt-theme-button" type="button" onclick="toggleTheme()" aria-label="Переключить тему">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/></svg>
+                <span>Тема</span>
+            </button>
+        </header>
+
+        <div class="tt-content">
+            <div class="tt-heading">
+                <div>
+                    <div class="tt-eyebrow">ПАНЕЛЬ УПРАВЛЕНИЯ</div>
+                    <h1>Обзор</h1>
+                    <p>Показатели панели из локального снимка, без обращения к серверам</p>
+                </div>
+                {% if current_user and current_user.role == 'admin' %}
+                <a class="tt-button" href="/servers/new">
+                    <span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+                    Добавить сервер
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="tt-alert tt-alert--info" role="note">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <div>
+                    <span class="tt-alert__title">Локальный снимок</span>
+                    Страница читает только сохранённый файл данных панели. SSH-подключения не открываются: доступность узлов, состояние VPN и лимиты трафика здесь не проверяются.
+                </div>
+            </div>
+
+            <section class="tt-section" aria-labelledby="tt-metrics-title">
+                <div class="tt-section__head">
+                    <div>
+                        <h2 class="tt-section__title" id="tt-metrics-title">Показатели</h2>
+                        <div class="tt-section__desc">Только то, что есть в снимке. Отсутствующие данные не заменяются оценками.</div>
+                    </div>
+                </div>
+                {% set metrics = [
+                    ('Клиентские аккаунты', overview.users, 'Только роль «пользователь»: администраторы и поддержка не считаются'),
+                    ('Устройства', overview.devices, 'Учёт физических устройств не ведётся: конфигурации не равны устройствам'),
+                    ('Серверы', overview.servers, 'Записи серверов из локального снимка'),
+                    ('Подписки', overview.subscriptions, 'Проверенный источник подписок не подключён'),
+                    ('Выручка', overview.revenue, 'Финансовые данные на этой странице не рассчитываются')
+                ] %}
+                <div class="tt-metric-grid">
+                    {% for label, metric, note in metrics %}
+                    <article class="tt-metric">
+                        <span class="tt-metric__label">{{ label }}</span>
+                        <div class="tt-metric__value">{{ value(metric) }}</div>
+                        <div class="tt-metric__note">{{ note }}</div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="tt-section" aria-labelledby="tt-servers-title">
+                <div class="tt-section__head">
+                    <div>
+                        <h2 class="tt-section__title" id="tt-servers-title">Серверы</h2>
+                        <div class="tt-section__desc">Записи из локального снимка. Состояние подключения не проверяется.</div>
+                    </div>
+                    <a class="tt-text-link" href="/">Все серверы</a>
+                </div>
+                <div class="tt-table-wrap tt-table-wrap--fluid">
+                    <table class="tt-table"><thead><tr><th scope="col">Сервер</th><th scope="col">Адрес</th><th scope="col">Состояние</th></tr></thead><tbody>
+                    {% for server in overview.server_rows or [] %}
+                    <tr><td><strong>{{ value(server.name) }}</strong></td><td>{{ value(server.host) }}</td><td>Не проверено</td></tr>
+                    {% else %}<tr><td class="tt-empty" colspan="3">Нет данных</td></tr>{% endfor %}
+                    </tbody></table>
+                </div>
+            </section>
+
+            <section class="tt-section" aria-labelledby="tt-source-title">
+                <div class="tt-section__head">
+                    <div>
+                        <h2 class="tt-section__title" id="tt-source-title">Источник данных</h2>
+                        <div class="tt-section__desc">Что именно делает эта страница и чего она не делает.</div>
+                    </div>
+                </div>
+                <div class="tt-kv">
+                    <div class="tt-kv__row">
+                        <span class="tt-kv__key">Данные</span>
+                        <span class="tt-kv__value">локальный снимок панели</span>
+                    </div>
+                    <div class="tt-kv__row">
+                        <span class="tt-kv__key">SSH-подключения</span>
+                        <span class="tt-kv__value">не инициируются</span>
+                    </div>
+                    <div class="tt-kv__row">
+                        <span class="tt-kv__key">Доступность серверов</span>
+                        <span class="tt-kv__value">не проверяется</span>
+                    </div>
+                    <div class="tt-kv__row">
+                        <span class="tt-kv__key">Изменение данных</span>
+                        <span class="tt-kv__value">страница только читает</span>
+                    </div>
+                    <div class="tt-kv__row">
+                        <span class="tt-kv__key">Устройства, подписки, выручка</span>
+                        <span class="tt-kv__value">источник не подключён</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <nav class="tt-mobile-nav" aria-label="Мобильная навигация">
+        <a class="tt-nav-link tt-nav-link--active" href="/overview-preview" aria-current="page">{{ icon('overview') }}Обзор</a>
+        <a class="tt-nav-link" href="/">{{ icon('servers') }}Серверы</a>
+        {% if current_user and current_user.role in ['admin', 'support'] %}
+        <a class="tt-nav-link" href="/users">{{ icon('users') }}Пользователи</a>
+        {% endif %}
+        <details class="tt-mobile-more">
+            <summary class="tt-nav-link">{{ icon('more') }}Ещё</summary>
+            <div class="tt-mobile-menu">
+                {% if current_user and current_user.role == 'admin' %}
+                {% if billing_available %}<a class="tt-nav-link" href="/billing-admin">Биллинг</a>{% endif %}
+                <a class="tt-nav-link" href="/settings">Настройки</a>
+                {% endif %}
+                <a class="tt-nav-link" href="/my">Мои подключения</a>
+                <a class="tt-nav-link" href="/logout">Выйти</a>
+            </div>
+        </details>
+    </nav>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (() => {
+        const shell = document.querySelector('.tt-overview');
+        const toggle = document.querySelector('.tt-sidebar-toggle');
+        if (!shell || !toggle) return;
+        function setCollapsed(collapsed) {
+            shell.classList.toggle('tt-overview--collapsed', collapsed);
+            toggle.setAttribute('aria-pressed', String(collapsed));
+        }
+        try { setCollapsed(localStorage.getItem('tt-sidebar-collapsed') === '1'); } catch (_) {}
+        toggle.addEventListener('click', () => {
+            const collapsed = !shell.classList.contains('tt-overview--collapsed');
+            setCollapsed(collapsed);
+            try { localStorage.setItem('tt-sidebar-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+        });
+    })();
+</script>
+{% endblock %}

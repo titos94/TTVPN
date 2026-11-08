@@ -1,0 +1,64 @@
+{% extends "billing_base.html" %}
+{% block title %}Тестовая оплата{% endblock %}
+{% block content %}
+<div class="bc-card" style="max-width:480px;margin:0 auto;">
+    <h1>Тестовая оплата</h1>
+    <div class="bc-warn" role="status">
+        <b>Тестовый режим.</b> Платёж учебный: деньги не списываются,
+        внешние платёжные сервисы не используются.
+    </div>
+    <div class="bc-row">
+        <span>Назначение</span>
+        <span>{{ plan.name if plan else 'Подписка TTVPN' }}{% if plan and plan.days %}, {{ plan.days }} дн.{% endif %}</span>
+    </div>
+    <div class="bc-row">
+        <span>Сумма</span>
+        <b>{{ format_money(payment.amount_kopecks) }}</b>
+    </div>
+    <div class="bc-row">
+        <span>Номер платежа</span>
+        <span class="bc-mono">{{ payment.id }}</span>
+    </div>
+    <div class="bc-actions" style="margin-top:18px;">
+        <button class="bc-btn" type="button" id="payBtn" onclick="confirmMock()"
+                style="flex:1 1 150px;">Оплатить</button>
+        <a class="bc-btn ghost" href="/plans" style="flex:1 1 150px;text-decoration:none;">Отмена</a>
+    </div>
+    <div class="bc-error" id="err" role="alert" aria-live="polite" style="margin:14px 0 0;"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    function setBusy(btn, busy, label) {
+        if (!btn) return;
+        if (busy) {
+            if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
+            btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
+            if (label) btn.textContent = label;
+            return;
+        }
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        if (btn.dataset.idleLabel) {
+            btn.textContent = btn.dataset.idleLabel;
+            delete btn.dataset.idleLabel;
+        }
+    }
+
+    async function confirmMock() {
+        const btn = document.getElementById('payBtn');
+        const err = document.getElementById('err');
+        err.classList.remove('show');
+        err.textContent = '';
+        setBusy(btn, true, 'Оплачиваем…');
+        try {
+            const data = await bcPost('/api/billing/mock/{{ payment.id }}/confirm', {});
+            window.location.href = data.redirect || '/cabinet';
+        } catch (e) {
+            setBusy(btn, false);
+            bcShowError(err, e.message);
+        }
+    }
+</script>
+{% endblock %}

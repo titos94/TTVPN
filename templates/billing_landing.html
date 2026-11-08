@@ -1,0 +1,575 @@
+{% extends "billing_base.html" %}
+{% block title %}VPN{% endblock %}
+{% block head_extra %}
+<meta name="description" content="{{ site_settings.title or 'TTVPN' }} — VPN с подключением через приложение Amnezia.">
+<style>
+    /* Лендинг живёт на тех же токенах, что панель и кабинет:
+       одна сетка отступов, один акцент, сдержанные радиусы. */
+    .bc-client .landing-hero {
+        position: relative;
+        overflow: hidden;
+        padding: clamp(24px, 5vw, 44px);
+    }
+    .landing-hero::before {
+        content: "";
+        position: absolute;
+        right: -120px;
+        bottom: -140px;
+        width: 340px;
+        height: 340px;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+        pointer-events: none;
+    }
+    .landing-hero__inner { position: relative; }
+    .landing-hero__logo {
+        display: block;
+        width: 52px;
+        height: 52px;
+        margin-bottom: 22px;
+        object-fit: contain;
+    }
+    .landing-hero__logo--text {
+        display: grid;
+        place-items: center;
+        border-radius: var(--radius-lg);
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+    .landing-hero__logo--text svg { width: 26px; height: 26px; }
+    .landing-hero__title {
+        margin: 0 0 14px;
+        font-size: clamp(2rem, 6vw, 3.1rem);
+        line-height: 1.05;
+        letter-spacing: -.04em;
+        max-width: 18ch;
+    }
+    .landing-hero__lead {
+        margin: 0 0 22px;
+        max-width: 52ch;
+        color: var(--text-secondary);
+        font-size: clamp(1rem, 2.2vw, 1.1rem);
+    }
+    .landing-hero__actions { justify-content: flex-start; }
+    .landing-hero__note {
+        margin: 16px 0 0;
+        color: var(--text-muted);
+        font-size: .86rem;
+    }
+    .landing-hero__metrics { margin-top: 26px; }
+    .landing-hero__metrics .bc-metric {
+        background: var(--bg-secondary);
+        border-color: var(--border-color);
+    }
+    .landing-hero__metrics .bc-metric__value { font-size: 1.35rem; }
+
+    .bc-client .landing-section { padding: clamp(20px, 4vw, 30px); }
+    .landing-section h2 {
+        margin: 0 0 8px;
+        font-size: clamp(1.25rem, 3vw, 1.6rem);
+        letter-spacing: -.03em;
+        line-height: 1.2;
+    }
+    .landing-lead {
+        margin: 0 0 18px;
+        max-width: 62ch;
+        color: var(--text-secondary);
+        font-size: .93rem;
+    }
+
+    /* Возможности */
+    .landing-features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+    }
+    .landing-feature {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-secondary);
+    }
+    .landing-feature__icon {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+    .landing-feature__icon svg { width: 18px; height: 18px; }
+    .landing-feature h3 {
+        margin: 0;
+        font-size: .98rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        line-height: 1.3;
+    }
+    .landing-feature p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: .86rem;
+        line-height: 1.5;
+    }
+
+    /* Тарифы: та же карточка, что на странице «Тарифы». */
+    .landing-plans {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        align-items: stretch;
+        margin-top: 16px;
+    }
+    .bc-client a.bc-plan {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 12px;
+        height: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 16px;
+        color: var(--text-primary);
+        background: #111a21;
+        border: 1px solid #465f70;
+        border-radius: 12px;
+        text-decoration: none;
+    }
+    .bc-client a.bc-plan:hover {
+        border-color: #80b6d6;
+        background: #111a21;
+        transform: none;
+    }
+    .bc-client a.bc-plan:focus-visible {
+        outline: 3px solid #b9ddff;
+        outline-offset: 3px;
+    }
+    .bc-plan__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .bc-plan__name {
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        line-height: 1.3;
+    }
+    .bc-plan__price { display: block; }
+    .bc-plan__price .bc-price {
+        font-size: 1.6rem;
+        line-height: 1.1;
+        letter-spacing: -.02em;
+        font-variant-numeric: tabular-nums;
+    }
+    .bc-plan__price .bc-price small {
+        display: block;
+        margin-top: 4px;
+        text-align: left;
+        font-size: .74rem;
+        font-weight: 400;
+        color: var(--text-muted);
+    }
+    .bc-plan__list { display: grid; gap: 6px; }
+    .bc-plan__item {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        color: var(--text-secondary);
+        font-size: .84rem;
+        line-height: 1.45;
+    }
+    .bc-plan__item svg {
+        flex: 0 0 auto;
+        width: 14px;
+        height: 14px;
+        margin-top: 3px;
+        color: var(--accent-light);
+    }
+    .bc-plan__cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: auto;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-card-hover);
+        color: var(--text-primary);
+        font-size: .85rem;
+        font-weight: 600;
+    }
+    .bc-client a.bc-plan:hover .bc-plan__cta {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+    }
+
+    /* Схема подключения */
+    .landing-diagram {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr auto 1fr;
+        gap: 8px;
+        align-items: center;
+        margin: 22px 0 20px;
+    }
+    .landing-node {
+        min-width: 0;
+        padding: 14px 10px;
+        text-align: center;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+    }
+    .landing-node svg {
+        display: block;
+        width: 32px;
+        height: 32px;
+        margin: 0 auto 10px;
+        color: var(--accent-light);
+    }
+    .landing-node b { display: block; font-size: .84rem; }
+    .landing-node span {
+        display: block;
+        margin-top: 4px;
+        color: var(--text-muted);
+        font-size: .74rem;
+    }
+    .landing-arrow { align-self: center; color: var(--text-muted); }
+    .landing-arrow svg { width: 18px; height: 18px; }
+    .landing-section .bc-step { border-bottom: 1px solid var(--border-color); padding: 13px 0; }
+    .landing-section .bc-step:last-child { border-bottom: 0; }
+    .landing-section .bc-step__n { background: var(--accent-surface); color: var(--accent-light); }
+
+    /* FAQ */
+    .landing-faq { display: grid; gap: 8px; margin-top: 16px; }
+    .landing-faq__item {
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+    }
+    .landing-faq__item summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: .92rem;
+        list-style: none;
+    }
+    .landing-faq__item summary::-webkit-details-marker { display: none; }
+    .landing-faq__item summary:focus-visible {
+        outline: 2px solid var(--accent-light);
+        outline-offset: 2px;
+        border-radius: var(--radius-md);
+    }
+    .landing-faq__chev {
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        color: var(--text-muted);
+        transition: transform .18s ease;
+    }
+    .landing-faq__item[open] .landing-faq__chev { transform: rotate(180deg); }
+    .landing-faq__body {
+        padding: 0 14px 14px;
+        color: var(--text-secondary);
+        font-size: .88rem;
+        line-height: 1.55;
+    }
+
+    .landing-footer__links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px 14px;
+        margin-bottom: 6px;
+    }
+
+    @media (max-width: 620px) {
+        .landing-hero__title { font-size: clamp(1.8rem, 9vw, 2.4rem); }
+        .landing-features { grid-template-columns: 1fr; }
+        .landing-plans { grid-template-columns: 1fr; gap: 10px; }
+        .bc-client a.bc-plan { padding: 14px; }
+        .bc-plan__price .bc-price { font-size: 1.45rem; }
+    }
+    @media (max-width: 480px) {
+        .landing-diagram { grid-template-columns: 1fr; gap: 6px; }
+        .landing-node { padding: 12px 10px; }
+        .landing-arrow { display: none; }
+    }
+</style>
+{% endblock %}
+{% block footer %}
+<div class="landing-footer">
+    <div class="landing-footer__links">
+        <a href="/billing/legal/privacy">Политика конфиденциальности</a>
+        <a href="/billing/legal/terms">Условия использования</a>
+    </div>
+    <div>{{ site_settings.title or 'TTVPN' }}</div>
+</div>
+{% endblock %}
+{% block content %}
+{% set ns = namespace(min_month=none, min_name='', max_devices=0) %}
+{% for plan in plans %}
+    {% if plan.days and plan.days > 0 %}
+        {% set per = (plan.price_kopecks * 30 / plan.days) | round(0, 'common') | int %}
+        {% if ns.min_month is none or per < ns.min_month %}
+            {% set ns.min_month = per %}
+            {% set ns.min_name = plan.name %}
+        {% endif %}
+    {% endif %}
+    {% if (plan.device_limit or 0) > ns.max_devices %}{% set ns.max_devices = plan.device_limit | int %}{% endif %}
+{% endfor %}
+
+<section class="bc-card landing-hero" aria-labelledby="landing-title">
+    <div class="landing-hero__inner">
+        {% if brand.ready %}
+        <img class="landing-hero__logo" src="{{ brand.logo_url }}" alt="{{ site_settings.title or 'TTVPN' }}">
+        {% else %}
+        <span class="landing-hero__logo landing-hero__logo--text" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+        </span>
+        {% endif %}
+        <div class="tt-eyebrow">{{ site_settings.title or 'TTVPN' }} · VPN</div>
+        <h1 class="landing-hero__title" id="landing-title">Свобода быть на связи</h1>
+        <p class="landing-hero__lead">{{ site_settings.subtitle or 'VPN-подключение через приложение Amnezia.' }}</p>
+        <div class="bc-actions landing-hero__actions">
+            <a class="bc-btn" href="/plans">Выбрать тариф</a>
+        </div>
+        {% if trial_public %}
+        <p class="landing-hero__note">Пробный период: {{ trial_days }} дней. Доступность и активация — в личном кабинете.</p>
+        {% endif %}
+    </div>
+    {% if plans %}
+    <div class="bc-metrics landing-hero__metrics" role="list">
+        {% if ns.min_month is not none %}
+        <div class="bc-metric" role="listitem">
+            <span class="bc-metric__label">Примерно за 30 дней</span>
+            <span class="bc-metric__value">от ≈ {{ format_money(ns.min_month) }}</span>
+            <span class="bc-metric__note">Пересчёт для сравнения{% if ns.min_name %}, тариф «{{ ns.min_name }}»{% endif %}</span>
+        </div>
+        {% endif %}
+        {% if ns.max_devices %}
+        <div class="bc-metric" role="listitem">
+            <span class="bc-metric__label">Устройства</span>
+            <span class="bc-metric__value">до {{ ns.max_devices }}</span>
+            <span class="bc-metric__note">на одну подписку</span>
+        </div>
+        {% endif %}
+        <div class="bc-metric" role="listitem">
+            <span class="bc-metric__label">Тарифы</span>
+            <span class="bc-metric__value">{{ plans|length }}</span>
+            <span class="bc-metric__note">на выбор</span>
+        </div>
+        {% if trial_public %}
+        <div class="bc-metric" role="listitem">
+            <span class="bc-metric__label">Пробный период</span>
+            <span class="bc-metric__value">{{ trial_days }} дн.</span>
+            <span class="bc-metric__note">активация в кабинете</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+
+<section class="bc-card landing-section" aria-labelledby="landing-features-title">
+    <div class="tt-eyebrow">Возможности</div>
+    <h2 id="landing-features-title">Что входит в подписку</h2>
+    <p class="landing-lead">Ключ доступа, лимит устройств и управление подпиской — в одном личном кабинете.</p>
+    <div class="landing-features">
+        <article class="landing-feature">
+            <span class="landing-feature__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 3h4v4"/>
+                </svg>
+            </span>
+            <h3>Свой ключ на каждое устройство</h3>
+            <p>Ключ, QR-код и файл конфигурации выдаются отдельно для каждого устройства в разделе «Подключения».</p>
+        </article>
+        <article class="landing-feature">
+            <span class="landing-feature__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="12" height="16" rx="2"/><path d="M18 8h3v12h-9v-4"/>
+                </svg>
+            </span>
+            <h3>Лимит устройств по тарифу</h3>
+            <p>{% if ns.max_devices %}В текущих тарифах — до {{ ns.max_devices }} устройств на одну подписку. {% endif %}Точный лимит указан в составе тарифа.</p>
+        </article>
+        <article class="landing-feature">
+            <span class="landing-feature__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>
+                </svg>
+            </span>
+            <h3>Приложение Amnezia</h3>
+            <p>Ключ импортируется в приложение <a href="https://amnezia.org/ru/downloads" target="_blank" rel="noopener">Amnezia</a> на телефоне или компьютере.</p>
+        </article>
+        <article class="landing-feature">
+            <span class="landing-feature__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>
+                </svg>
+            </span>
+            <h3>Личный кабинет</h3>
+            <p>Срок действия подписки, устройства и история платежей — в одном месте.</p>
+        </article>
+        {% if tg_ready %}
+        <article class="landing-feature">
+            <span class="landing-feature__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21.9 4.3 18.7 19c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.3 12.2 1.5 10.7c-1-.3-1-1 .2-1.5l19-7.3c.9-.3 1.6.2 1.2 2.4Z"/>
+                </svg>
+            </span>
+            <h3>Вход через Telegram</h3>
+            <p>Откройте бота, нажмите «Старт» и вернитесь в браузер — сессия подтвердится автоматически.</p>
+        </article>
+        {% endif %}
+    </div>
+</section>
+
+{% if plans %}
+<section class="bc-card landing-section" aria-labelledby="landing-plans-title">
+    <div class="tt-eyebrow">Тарифы</div>
+    <h2 id="landing-plans-title">Выберите срок подписки</h2>
+    <div class="landing-plans">
+        {% for plan in plans %}
+        {% set per = (plan.price_kopecks * 30 / plan.days) | round(0, 'common') | int if plan.days and plan.days > 0 else none %}
+        <a class="bc-plan" href="/plans?plan={{ plan.id | string | urlencode }}">
+            <span class="bc-plan__head">
+                <b class="bc-plan__name">{{ plan.name }}</b>
+            </span>
+            <span class="bc-plan__price">
+                <span class="bc-price">{{ format_money(plan.price_kopecks) }}{% if per is not none %}<small>≈ {{ format_money(per) }} за 30 дней</small>{% endif %}</span>
+            </span>
+            <span class="bc-plan__list">
+                <span class="bc-plan__item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                    {{ plan.days }} дней доступа
+                </span>
+                {% if plan.device_limit %}
+                <span class="bc-plan__item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2"/><path d="M18 8h3v12h-9v-4"/></svg>
+                    До {{ plan.device_limit }} устройств
+                </span>
+                {% endif %}
+            </span>
+            <span class="bc-plan__cta">Выбрать</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% else %}
+<section class="bc-card landing-section" aria-labelledby="landing-plans-title">
+    <div class="tt-eyebrow">Тарифы</div>
+    <h2 id="landing-plans-title">Выберите срок подписки</h2>
+    <p class="bc-muted" style="margin:0;">Тарифы уточняются — загляните чуть позже.</p>
+</section>
+{% endif %}
+
+<section class="bc-card landing-section" aria-labelledby="landing-how-title">
+    <div class="tt-eyebrow">Подключение</div>
+    <h2 id="landing-how-title">Как начать</h2>
+    <p class="landing-lead">Подключение собирается из трёх элементов: ваше устройство, приложение Amnezia и VPN-сервер.</p>
+    <div class="landing-diagram" role="img" aria-label="Устройство подключается через приложение Amnezia к VPN-серверу">
+        <div class="landing-node">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="12" y="4" width="16" height="31" rx="3"/><path d="M17 30h6"/></svg>
+            <b>Устройство</b><span>Телефон или ПК</span>
+        </div>
+        <span class="landing-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+        <div class="landing-node">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 4 32 9v9c0 8-5 14-12 18C13 32 8 26 8 18V9z"/><path d="m15 20 3 3 7-8"/></svg>
+            <b>Amnezia</b><span>Ваш ключ</span>
+        </div>
+        <span class="landing-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+        <div class="landing-node">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="6" y="7" width="28" height="11" rx="2"/><rect x="6" y="22" width="28" height="11" rx="2"/><path d="M11 12h2m-2 15h2m5-15h11m-11 15h11"/></svg>
+            <b>VPN-сервер</b><span>Подключение</span>
+        </div>
+    </div>
+    <div class="bc-steps">
+        <div class="bc-step"><span class="bc-step__n">1</span>
+            <span>Зарегистрируйтесь по email{% if tg_ready %} или через
+            <a href="/cabinet/tg">Telegram</a>: откройте бота, нажмите «Старт»
+            и вернитесь в браузер — вход подтвердится автоматически{% endif %}.</span></div>
+        <div class="bc-step"><span class="bc-step__n">2</span>
+            <span>Выберите тариф на странице «Тарифы» и перейдите к оплате.</span></div>
+        <div class="bc-step"><span class="bc-step__n">3</span>
+            <span>Откройте «Подключения», чтобы получить данные для подключения.</span></div>
+        <div class="bc-step"><span class="bc-step__n">4</span>
+            <span>Импортируйте их в приложение <a href="https://amnezia.org/ru/downloads"
+                target="_blank" rel="noopener">Amnezia</a>.</span></div>
+    </div>
+    {% if tg_ready %}
+    <div class="bc-sep"></div>
+    <div class="bc-center">
+        <a class="bc-btn bc-tgbtn" href="/cabinet/tg" style="max-width:320px;margin:0 auto;">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                <path d="M21.9 4.3 18.7 19c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.3 12.2 1.5 10.7c-1-.3-1-1 .2-1.5l19-7.3c.9-.3 1.6.2 1.2 2.4Z"/>
+            </svg>
+            Начать через Telegram
+        </a>
+        <p class="bc-hint" style="margin-top:10px;">Без почты и пароля: нажмите «Старт» в боте и вернитесь в браузер.</p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="bc-card landing-section" aria-labelledby="landing-faq-title">
+    <div class="tt-eyebrow">Вопросы</div>
+    <h2 id="landing-faq-title">Частые вопросы</h2>
+    <div class="landing-faq">
+        <details class="landing-faq__item">
+            <summary>
+                <span>Где взять ключ для подключения?</span>
+                <svg class="landing-faq__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="landing-faq__body">В разделе «Подключения» личного кабинета: там ключ <span class="bc-mono">vpn://</span>, QR-код и файл конфигурации для приложения.</div>
+        </details>
+        <details class="landing-faq__item">
+            <summary>
+                <span>Сколько устройств можно подключить?</span>
+                <svg class="landing-faq__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="landing-faq__body">Лимит устройств указан в составе каждого тарифа на странице «Тарифы». Для каждого устройства выдаётся отдельный ключ.</div>
+        </details>
+        <details class="landing-faq__item">
+            <summary>
+                <span>Как продлить подписку?</span>
+                <svg class="landing-faq__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="landing-faq__body">Откройте «Тарифы» и выберите новый срок: он добавится к текущей дате окончания подписки.</div>
+        </details>
+        {% if trial_public %}
+        <details class="landing-faq__item">
+            <summary>
+                <span>Есть ли пробный период?</span>
+                <svg class="landing-faq__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="landing-faq__body">Да, {{ trial_days }} дней. Активация доступна в личном кабинете, если пробный период ещё не использован.</div>
+        </details>
+        {% endif %}
+        <details class="landing-faq__item">
+            <summary>
+                <span>Что происходит после оплаты?</span>
+                <svg class="landing-faq__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="landing-faq__body">Оплата проходит на странице платёжного сервиса. После возврата в кабинет откройте «Подключения»: там ключ и QR-код для приложения Amnezia.</div>
+        </details>
+    </div>
+</section>
+{% endblock %}

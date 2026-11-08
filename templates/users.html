@@ -1,0 +1,2373 @@
+{% extends "base.html" %}
+
+{% block title_extra %} — {{ _('users_title') }}{% endblock %}
+{% block page_class %}page page--users{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* временно, до ttvn-ui.css — плотный тулбар, таблица, пустое состояние и
+       сетка форм страницы пользователей. Все правила ограничены .page--users,
+       чтобы не менять вид остальных разделов панели. */
+    .page--users .tt-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .page--users .tt-toolbar__search {
+        flex: 1 1 260px;
+        min-width: 0;
+    }
+
+    .page--users .tt-toolbar__search .form-input {
+        width: 100%;
+    }
+
+    .page--users .tt-toolbar__field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .page--users .tt-toolbar__label {
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .page--users .tt-toolbar__field .form-select {
+        min-width: 156px;
+    }
+
+    .page--users .tt-toolbar__reset {
+        margin-bottom: 1px;
+    }
+
+    .page--users .tt-table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-card);
+    }
+
+    .page--users .tt-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+
+    .page--users .tt-table th {
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .page--users .tt-table td {
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 13px;
+        vertical-align: middle;
+    }
+
+    .page--users .tt-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .page--users .tt-table tbody tr:hover td {
+        background: var(--bg-card-hover);
+    }
+
+    /* Строка уже не карточка старого форка: .entity-card/.user-card остаются
+       только как маркеры включения карточного вида на телефоне. */
+    .page--users .tt-table tbody tr.entity-card {
+        height: auto;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .page--users .tt-table tbody tr.entity-card:hover {
+        border-color: transparent;
+        background: transparent;
+    }
+
+    .page--users .tt-table tbody tr.tt-row--disabled td:not(.tt-cell-actions) {
+        opacity: 0.62;
+    }
+
+    .page--users .tt-table .badge {
+        font-size: 11px;
+        letter-spacing: 0.02em;
+    }
+
+    .page--users .tt-user-name {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        overflow-wrap: anywhere;
+    }
+
+    .page--users .tt-user-name .badge {
+        font-weight: 600;
+    }
+
+    .page--users .tt-user-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px 12px;
+        margin-top: 5px;
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .page--users .tt-user-meta > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .page--users .tt-user-meta svg {
+        width: 13px;
+        height: 13px;
+        flex: 0 0 13px;
+        opacity: 0.75;
+    }
+
+    .page--users .tt-usage {
+        max-width: 260px;
+        margin-top: 7px;
+    }
+
+    .page--users .tt-usage__bar {
+        height: 4px;
+        border-radius: 999px;
+        background: var(--bg-tertiary);
+        overflow: hidden;
+    }
+
+    .page--users .tt-usage__bar > span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+    }
+
+    .page--users .tt-usage__text {
+        margin-top: 4px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .page--users .tt-metric-cell {
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .page--users .tt-metric-cell--danger {
+        color: var(--danger);
+    }
+
+    .page--users .tt-conn-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--text-accent);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .page--users .tt-conn-link:hover {
+        text-decoration: underline;
+    }
+
+    .page--users .tt-conn-link svg {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 14px;
+    }
+
+    .page--users .tt-col-actions {
+        text-align: right;
+    }
+
+    .page--users .tt-row-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+    }
+
+    .page--users .tt-row-actions .btn-icon {
+        width: 32px;
+        height: 32px;
+    }
+
+    .page--users .tt-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 16px;
+    }
+
+    .page--users .tt-pagination__info {
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .page--users .tt-loading {
+        padding: 56px 20px;
+        text-align: center;
+        color: var(--text-muted);
+    }
+
+    .page--users .tt-loading .spinner {
+        width: 38px;
+        height: 38px;
+        margin: 0 auto 12px;
+    }
+
+    .page--users .tt-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 44px 24px;
+        border: 1px dashed var(--border-color);
+        border-radius: var(--radius-lg);
+        background: var(--bg-card);
+        text-align: center;
+    }
+
+    .page--users .tt-empty__icon {
+        display: grid;
+        place-items: center;
+        width: 46px;
+        height: 46px;
+        margin-bottom: 14px;
+        border-radius: 12px;
+        background: var(--accent-surface);
+        color: var(--accent-light);
+    }
+
+    .page--users .tt-empty__icon svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    html[data-theme="light"] .page--users .tt-empty__icon {
+        color: var(--accent);
+    }
+
+    .page--users .tt-empty__title {
+        color: var(--text-primary);
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .page--users .tt-empty__text {
+        max-width: 46ch;
+        margin: 6px 0 18px;
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .page--users .tt-form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 14px;
+        margin-bottom: 10px;
+    }
+
+    .page--users .tt-form-grid > .form-group {
+        min-width: 0;
+        margin-bottom: 0;
+    }
+
+    .page--users .tt-form-grid--wide > .form-group--full,
+    .page--users .tt-form-grid > .form-group--full {
+        grid-column: 1 / -1;
+    }
+
+    .page--users .tt-inline-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 110px auto;
+        gap: 8px;
+    }
+
+    .page--users .tt-field-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .page--users .tt-field-row .form-select,
+    .page--users .tt-field-row .form-input {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .page--users .tt-field-row .btn {
+        flex: 0 0 auto;
+    }
+
+    .page--users .tt-form-section-title {
+        margin: 0 0 10px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .page--users .tt-subpanel {
+        margin-bottom: 14px;
+        padding: 12px 14px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-input);
+    }
+
+    .page--users .tt-subpanel .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .page--users .tt-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .page--users .tt-check + .tt-check {
+        margin-top: 8px;
+    }
+
+    .page--users .tt-check input {
+        flex: 0 0 auto;
+        margin: 0;
+    }
+
+    .page--users .tt-scroll-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: min(70vh, 640px);
+        overflow-y: auto;
+    }
+
+    .page--users .tt-list-note {
+        padding: 24px 12px;
+        color: var(--text-muted);
+        font-size: 13px;
+        text-align: center;
+    }
+
+    .page--users .tt-list-note--error {
+        color: var(--danger);
+    }
+
+    .page--users .client-avatar svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    .page--users .client-avatar {
+        color: var(--accent-light);
+    }
+
+    html[data-theme="light"] .page--users .client-avatar {
+        color: var(--accent);
+    }
+
+    .page--users .client-meta a {
+        color: var(--text-accent);
+        text-decoration: underline;
+    }
+
+    .page--users .traffic-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .page--users .traffic-badge svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .page--users .tt-progress__results .badge {
+        font-size: 11px;
+    }
+
+    .page--users .tt-config-actions .btn {
+        flex: 1 1 0;
+    }
+
+    .page--users .tt-progress {
+        margin-bottom: 14px;
+    }
+
+    .page--users .tt-progress__head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .page--users .tt-progress__track {
+        height: 6px;
+        margin-top: 6px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--bg-tertiary);
+    }
+
+    .page--users .tt-progress__fill {
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+        transition: width 0.3s ease;
+    }
+
+    .page--users .tt-progress__results {
+        max-height: 140px;
+        margin-top: 8px;
+        overflow: auto;
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .page--users .modal--wide {
+        max-width: 600px;
+    }
+
+    .page--users .modal--narrow {
+        max-width: 460px;
+    }
+
+    .page--users .modal-close svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    @media (max-width: 760px) {
+        .page--users .tt-toolbar__field {
+            flex: 1 1 140px;
+        }
+
+        .page--users .tt-toolbar__field .form-select {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .page--users .tt-toolbar__reset {
+            flex: 0 0 auto;
+        }
+
+        /* Таблица превращается в карточки: страница не скроллится по горизонтали. */
+        .page--users .tt-table-wrap {
+            overflow: visible;
+            border: 0;
+            background: transparent;
+        }
+
+        .page--users .tt-table,
+        .page--users .tt-table tbody {
+            display: block;
+            width: 100%;
+        }
+
+        .page--users .tt-table thead {
+            display: none;
+        }
+
+        .page--users .tt-table tbody tr.entity-card {
+            display: block;
+            margin-bottom: 10px;
+            padding: 14px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            background: var(--bg-card);
+        }
+
+        .page--users .tt-table tbody tr.entity-card:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+        }
+
+        .page--users .tt-table tbody td {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            width: 100%;
+            padding: 6px 0;
+            border: 0;
+            text-align: left;
+        }
+
+        .page--users .tt-table tbody td::before {
+            content: attr(data-label);
+            flex: 0 0 auto;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .page--users .tt-table tbody td:first-child {
+            display: block;
+            padding: 0 0 10px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .page--users .tt-table tbody td:first-child::before,
+        .page--users .tt-table tbody td.tt-cell-actions::before {
+            content: none;
+        }
+
+        .page--users .tt-table tbody td.tt-cell-actions {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            padding-top: 10px;
+            margin-top: 4px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .page--users .tt-row-actions {
+            justify-content: flex-start;
+        }
+
+        .page--users .tt-usage {
+            max-width: none;
+        }
+
+        .page--users .tt-col-actions {
+            text-align: left;
+        }
+    }
+
+    @media (max-width: 560px) {
+        .page--users .tt-form-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .page--users .tt-inline-fields {
+            grid-template-columns: 1fr;
+        }
+
+        .page--users .tt-field-row {
+            flex-wrap: wrap;
+        }
+
+        .page--users .tt-field-row .btn {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section>
+    <div class="page-header page-header--with-search">
+        <div>
+            <div class="tt-eyebrow">Панель управления</div>
+            <h1 class="section-title page-header__title">
+                <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                {{ _('users_title') }}
+            </h1>
+            <p class="page-header__subtitle">Аккаунты клиентов: роли, доступы, срок действия и подключения. Отдельный ключ для каждого устройства.</p>
+        </div>
+
+        {% if current_user.role == 'admin' %}
+        <div class="page-header__actions">
+            <button class="btn btn-secondary" onclick="openBulkMailModal()" id="bulkMailBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+                {{ _('mail_send_all_btn') }}
+            </button>
+            <button class="btn btn-primary" onclick="openModal('addUserModal')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                {{ _('add_user') }}
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Поиск живёт в тулбаре под шапкой; класс шапки оставлен ради мобильной сетки. #}
+    <div class="tt-toolbar" role="search" aria-label="Поиск и фильтры пользователей">
+        <div class="tt-toolbar__search search-field">
+            <input type="text" class="form-input" id="userSearch" placeholder="{{ _('search_placeholder') }}"
+                autocomplete="off" readonly onfocus="this.removeAttribute('readonly')"
+                oninput="handleSearch(this.value)">
+            <span class="search-field-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        </div>
+
+        <label class="tt-toolbar__field" for="userStatusFilter">
+            <span class="tt-toolbar__label">{{ _('status') }}</span>
+            <select class="form-select" id="userStatusFilter" onchange="applyUserFilters()">
+                <option value="">Все</option>
+                <option value="active">{{ _('active') }}</option>
+                <option value="expired">Истёк</option>
+                <option value="disabled">{{ _('disabled') }}</option>
+            </select>
+        </label>
+
+        <label class="tt-toolbar__field" for="userRoleFilter">
+            <span class="tt-toolbar__label">{{ _('role_label') }}</span>
+            <select class="form-select" id="userRoleFilter" onchange="applyUserFilters()">
+                <option value="">Все</option>
+                <option value="admin">Администратор</option>
+                <option value="support">Поддержка</option>
+                <option value="user">Пользователь</option>
+            </select>
+        </label>
+
+        <button type="button" class="btn btn-secondary btn-sm tt-toolbar__reset" id="userFiltersReset"
+            onclick="resetUserFilters()">Сбросить</button>
+    </div>
+
+    <div id="usersContainer" class="hidden">
+        <div class="tt-table-wrap">
+            <table class="tt-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Пользователь</th>
+                        <th scope="col">{{ _('role_label') }}</th>
+                        <th scope="col">{{ _('connections') }}</th>
+                        <th scope="col">Срок действия</th>
+                        <th scope="col">{{ _('status') }}</th>
+                        <th scope="col" class="tt-col-actions">{{ _('actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="usersGrid">
+                    <!-- Пользователи загружаются через JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="pagination" class="tt-pagination">
+            <button class="btn btn-secondary btn-sm" id="prevPage" onclick="changePage(-1)">{{ _('prev_page') }}</button>
+            <span id="pageInfo" class="tt-pagination__info"></span>
+            <button class="btn btn-secondary btn-sm" id="nextPage" onclick="changePage(1)">{{ _('next_page') }}</button>
+        </div>
+    </div>
+
+    <div id="usersFilterEmpty" class="tt-empty hidden">
+        <div class="tt-empty__icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <div class="tt-empty__title">{{ _('nothing_found') }}</div>
+        <p class="tt-empty__text">Ни один пользователь на этой странице не подходит под выбранные фильтры.</p>
+        <button type="button" class="btn btn-secondary" onclick="resetUserFilters()">Сбросить фильтры</button>
+    </div>
+
+    <div id="usersLoading" class="tt-loading">
+        <div class="spinner"></div>
+        <p>{{ _('loading_users') }}</p>
+    </div>
+
+    <div id="usersEmpty" class="tt-empty hidden">
+        <div class="tt-empty__icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="tt-empty__title">{{ _('nothing_found') }}</div>
+        <p class="tt-empty__text">{{ _('search_empty_desc') }}</p>
+        {% if current_user.role == 'admin' %}
+        <button type="button" class="btn btn-primary" onclick="openModal('addUserModal')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            {{ _('add_user') }}
+        </button>
+        {% endif %}
+    </div>
+</section>
+
+<!-- ===== Add User Modal ===== -->
+<div class="modal-backdrop" id="addUserModal">
+    <div class="modal modal--wide">
+        <div class="modal-header">
+            <h2 class="modal-title">{{ _('add_user') }}</h2>
+            <button class="modal-close" onclick="closeModal('addUserModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <form id="addUserForm" onsubmit="return addUser(event)">
+            <div class="tt-form-grid">
+                <div class="form-group">
+                    <label class="form-label" for="newUsername">{{ _('username_label') }}</label>
+                    <input class="form-input" type="text" id="newUsername" placeholder="Имя пользователя" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" id="newPasswordLabel" for="newPassword">{{ _('password_label') }}</label>
+                    <input class="form-input" type="password" id="newPassword" placeholder="••••••••">
+                    <div class="form-hint" id="newPasswordHint">{{ _('password_optional_no_role') }}</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="newRole">{{ _('role_label') }}</label>
+                    <select class="form-select" id="newRole" onchange="toggleNewUserPasswordReq()">
+                        <option value="none" selected>{{ _('role_none_desc') }}</option>
+                        <option value="user">{{ _('role_user_desc') }}</option>
+                        <option value="support">{{ _('role_support_desc') }}</option>
+                        <option value="admin">{{ _('role_admin_desc') }}</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="newEmail">{{ _('email_label') }}</label>
+                    <input class="form-input" type="email" id="newEmail" placeholder="user@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="newTelegramId">{{ _('tg_id_label') }}</label>
+                    <input class="form-input" type="text" id="newTelegramId" placeholder="Числовой Telegram ID">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="newTrafficLimit">{{ _('traffic_limit_label') }}</label>
+                    <input class="form-input" type="number" step="0.01" min="0" id="newTrafficLimit" placeholder="0">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="newTrafficResetStrategy">{{ _('traffic_reset_strategy_label') }}</label>
+                    <select class="form-select" id="newTrafficResetStrategy">
+                        <option value="never">{{ _('traffic_reset_never') }}</option>
+                        <option value="daily">{{ _('traffic_reset_daily') }}</option>
+                        <option value="weekly">{{ _('traffic_reset_weekly') }}</option>
+                        <option value="monthly">{{ _('traffic_reset_monthly') }}</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="newExpirationDate">{{ _('expiration_date_label') }}</label>
+                    <div class="tt-inline-fields">
+                        <input class="form-input" type="date" id="newExpirationDate" aria-label="{{ _('expiration_date_label') }}">
+                        <select class="form-select" id="newExpirationTime" aria-label="{{ _('expiration_date_label') }}"></select>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="clearDateTimeFields('newExpirationDate', 'newExpirationTime')">{{ _('no_expiry') }}</button>
+                    </div>
+                </div>
+
+                <div class="form-group form-group--full">
+                    <label class="form-label" for="newDescription">{{ _('description_label') }}</label>
+                    <textarea class="form-input" id="newDescription" rows="2"
+                        placeholder="{{ _('description_label') }}"></textarea>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+            <div class="tt-form-section-title">{{ _('auto_conn_title') }}</div>
+
+            <div class="tt-form-grid">
+                <div class="form-group">
+                    <label class="form-label" for="newUserServer">{{ _('server_label') }}</label>
+                    <select class="form-select" id="newUserServer">
+                        <option value="">{{ _('no_create_conn') }}</option>
+                        {% for s in servers %}
+                        <option value="{{ loop.index0 }}">{{ s.name }} ({{ s.host }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" id="newUserProtoGroup" style="display:none;">
+                    <label class="form-label" for="newUserProtocol">{{ _('protocol_label') }}</label>
+                    <select class="form-select" id="newUserProtocol">
+                        <!-- Dynamic -->
+                    </select>
+                </div>
+
+                <div class="form-group" id="newUserConnNameGroup" style="display:none;">
+                    <label class="form-label" for="newUserConnName">{{ _('connection_name') }}</label>
+                    <input class="form-input" type="text" id="newUserConnName"
+                        placeholder="{{ _('connection_name_placeholder') }}">
+                </div>
+            </div>
+
+            <div id="newUserTelemtOptions" class="tt-subpanel" style="display:none;">
+                <div class="tt-form-grid">
+                    <div class="form-group">
+                        <label class="form-label" for="newUserTelemtSecret">{{ _('telemt_secret_label') }}</label>
+                        <input class="form-input" type="text" id="newUserTelemtSecret" placeholder="{{ _('optional') }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="newUserTelemtAdTag">{{ _('telemt_ad_tag_label') }}</label>
+                        <input class="form-input" type="text" id="newUserTelemtAdTag" placeholder="{{ _('optional') }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="newUserTelemtMaxConns">{{ _('telemt_max_conns_label') }}</label>
+                        <input class="form-input" type="number" id="newUserTelemtMaxConns" placeholder="{{ _('optional') }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="newUserTelemtQuota">{{ _('telemt_quota_label') }}</label>
+                        <input class="form-input" type="number" id="newUserTelemtQuota" placeholder="{{ _('optional') }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="newUserTelemtMaxIps">{{ _('telemt_max_ips_label') }}</label>
+                        <input class="form-input" type="number" id="newUserTelemtMaxIps" placeholder="{{ _('optional') }}" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="newUserTelemtExpiry">{{ _('expiration_date_label') }}</label>
+                        <input class="form-input" type="datetime-local" id="newUserTelemtExpiry">
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addUserModal')">{{ _('cancel')
+                    }}</button>
+                <button type="submit" class="btn btn-primary" id="addUserBtn">
+                    <span id="addUserBtnText">{{ _('create') }}</span>
+                    <div class="spinner hidden" id="addUserSpinner"></div>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== Edit User Modal ===== -->
+<div class="modal-backdrop" id="editUserModal">
+    <div class="modal modal--wide">
+        <div class="modal-header">
+            <h2 class="modal-title">{{ _('edit_user_title').replace('{}', '<span id="editUserTitle"></span>') | safe }}
+            </h2>
+            <button class="modal-close" onclick="closeModal('editUserModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <form id="editUserForm" onsubmit="event.preventDefault(); saveEditUser();">
+            <input type="hidden" id="editUserId">
+            <div class="tt-form-grid">
+                <div class="form-group">
+                    <label class="form-label" for="editUserName">{{ _('username_label') }}</label>
+                    <input type="text" class="form-input" id="editUserName" placeholder="Имя пользователя" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editUserEmail">{{ _('edit_user_email') }}</label>
+                    <input type="email" class="form-input" id="editUserEmail" placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editUserTG">{{ _('edit_user_tg') }}</label>
+                    <input type="text" class="form-input" id="editUserTG" placeholder="Числовой Telegram ID">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editUserLimit">{{ _('edit_user_limit') }}</label>
+                    <input type="number" step="0.01" min="0" class="form-input" id="editUserLimit" placeholder="0">
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label" for="editUserTrafficResetStrategy">{{ _('traffic_reset_strategy_label') }}</label>
+                    <div class="tt-field-row">
+                        <select class="form-select" id="editUserTrafficResetStrategy">
+                            <option value="never">{{ _('traffic_reset_never') }}</option>
+                            <option value="daily">{{ _('traffic_reset_daily') }}</option>
+                            <option value="weekly">{{ _('traffic_reset_weekly') }}</option>
+                            <option value="monthly">{{ _('traffic_reset_monthly') }}</option>
+                        </select>
+                        <button type="button" class="btn btn-secondary btn-sm" id="resetTrafficBtn" onclick="resetUserTraffic()">
+                            <span id="resetTrafficBtnText">{{ _('reset_traffic') }}</span>
+                            <div class="spinner hidden" id="resetTrafficSpinner"></div>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editUserExpiration">{{ _('expiration_date_label') }}</label>
+                    <div class="tt-inline-fields">
+                        <input class="form-input" type="date" id="editUserExpiration" aria-label="{{ _('expiration_date_label') }}">
+                        <select class="form-select" id="editUserExpirationTime" aria-label="{{ _('expiration_date_label') }}"></select>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="clearDateTimeFields('editUserExpiration', 'editUserExpirationTime')">{{ _('no_expiry') }}</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editUserPass">{{ _('new_password_hint') }}</label>
+                    <input type="password" class="form-input" id="editUserPass" placeholder="••••••••">
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label" for="editUserDesc">{{ _('description_label') }}</label>
+                    <textarea class="form-input" id="editUserDesc" rows="2"
+                        placeholder="{{ _('description_label') }}"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('editUserModal')">{{ _('cancel') }}</button>
+                <button type="submit" class="btn btn-primary" id="saveEditBtn">
+                    <div id="saveEditSpinner" class="spinner hidden"></div>
+                    <span id="saveEditBtnText">{{ _('save') }}</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== Add Connection for User Modal ===== -->
+<div class="modal-backdrop" id="addUserConnModal">
+    <div class="modal modal--wide">
+        <div class="modal-header">
+            <h2 class="modal-title" id="addUserConnTitle">{{ _('add_connection') }}</h2>
+            <button class="modal-close" onclick="closeModal('addUserConnModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <div class="tt-form-grid">
+            <div class="form-group">
+                <label class="form-label" for="ucMode">{{ _('op_type_label') }}</label>
+                <select class="form-select" id="ucMode" onchange="toggleUCMode()">
+                    <option value="new">{{ _('create_new_conn') }}</option>
+                    <option value="existing">{{ _('link_existing_conn') }}</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="ucServerGroup">
+                <label class="form-label" for="ucServer">{{ _('server_label') }}</label>
+                <select class="form-select" id="ucServer">
+                    {% for s in servers %}
+                    <option value="{{ loop.index0 }}">{{ s.name }} ({{ s.host }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group" id="ucProtoGroup">
+                <label class="form-label" for="ucProtocol">{{ _('protocol_label') }}</label>
+                <select class="form-select" id="ucProtocol">
+                    <!-- Dynamic -->
+                </select>
+            </div>
+
+            <div class="form-group" id="ucNameGroup">
+                <label class="form-label" for="ucName">{{ _('conn_name_panel') }}</label>
+                <input class="form-input" type="text" id="ucName" placeholder="{{ _('connection_name_placeholder') }}">
+            </div>
+
+            <div class="form-group form-group--full" id="ucExistingClientGroup" style="display:none;">
+                <label class="form-label" for="ucExistingClient">{{ _('select_existing_conn') }}</label>
+                <select class="form-select" id="ucExistingClient" multiple size="6">
+                    <option value="">{{ _('loading') }}</option>
+                </select>
+                <div class="form-hint">{{ _('existing_conn_hint') }}</div>
+            </div>
+        </div>
+
+        <div id="ucTelemtOptions" class="tt-subpanel" style="display:none;">
+            <div class="tt-form-grid">
+                <div class="form-group">
+                    <label class="form-label" for="ucTelemtSecret">{{ _('telemt_secret_label') }}</label>
+                    <input class="form-input" type="text" id="ucTelemtSecret" placeholder="{{ _('optional') }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="ucTelemtAdTag">{{ _('telemt_ad_tag_label') }}</label>
+                    <input class="form-input" type="text" id="ucTelemtAdTag" placeholder="{{ _('optional') }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="ucTelemtMaxConns">{{ _('telemt_max_conns_label') }}</label>
+                    <input class="form-input" type="number" id="ucTelemtMaxConns" placeholder="{{ _('optional') }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="ucTelemtQuota">{{ _('telemt_quota_label') }}</label>
+                    <input class="form-input" type="number" id="ucTelemtQuota" placeholder="{{ _('optional') }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="ucTelemtMaxIps">{{ _('telemt_max_ips_label') }}</label>
+                    <input class="form-input" type="number" id="ucTelemtMaxIps" placeholder="{{ _('optional') }}" min="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="ucTelemtExpiry">{{ _('telemt_expiry_label') }}</label>
+                    <input class="form-input" type="text" id="ucTelemtExpiry" placeholder="2026-12-31T23:59:59Z">
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('addUserConnModal')">{{ _('cancel') }}</button>
+            <button class="btn btn-primary" onclick="doAddUserConnection()" id="ucAddBtn">
+                <span id="ucAddBtnText">{{ _('add') }}</span>
+                <div class="spinner hidden" id="ucAddSpinner"></div>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== User Connections Modal ===== -->
+<div class="modal-backdrop" id="userConnsModal">
+    <div class="modal modal--wide">
+        <div class="modal-header">
+            <h2 class="modal-title" id="userConnsTitle">{{ _('user_conns_title') }}</h2>
+            <button class="modal-close" onclick="closeModal('userConnsModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div id="userConnsList" class="tt-scroll-list"></div>
+    </div>
+</div>
+
+<!-- ===== Config Modal ===== -->
+<div class="modal-backdrop" id="configModal">
+    <div class="modal modal--wide">
+        <div class="modal-header">
+            <h2 class="modal-title" id="configModalTitle">{{ _('config') }}</h2>
+            <button class="modal-close" onclick="closeModal('configModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="config-tabs">
+            <button class="config-tab active" onclick="switchConfigTab('conf')">{{ _('config_tab') }}</button>
+            <button class="config-tab" onclick="switchConfigTab('vpn')">{{ _('vpn_key_tab') }}</button>
+            <button class="config-tab" onclick="switchConfigTab('qr')">{{ _('qr_code_tab') }}</button>
+        </div>
+        <div class="config-panel active" id="panel-conf">
+            <div class="config-display">
+                <div class="config-text" id="configText"></div>
+                <div class="config-actions tt-config-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(currentConfig)">{{ _('copy_config') }}</button>
+                    <button class="btn btn-primary btn-sm"
+                        onclick="downloadFile(currentConfig, currentConfigName+'.conf')">{{ _('download_conf') }}</button>
+                </div>
+            </div>
+        </div>
+        <div class="config-panel" id="panel-vpn">
+            <div class="vpn-link-box" id="vpnLinkText"></div>
+            <div class="config-actions tt-config-actions">
+                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(currentVpnLink)">{{ _('copy_key') }}</button>
+            </div>
+        </div>
+        <div class="config-panel" id="panel-qr">
+            <div class="qr-container">
+                <div class="qr-format hidden" id="qrFormat">
+                    <button type="button" class="qr-format-btn active" data-fmt="amnezia"
+                        onclick="setQrFormat('amnezia')">{{ _('qr_format_amnezia') }}</button>
+                    <button type="button" class="qr-format-btn" data-fmt="wireguard"
+                        onclick="setQrFormat('wireguard')">{{ _('qr_format_wireguard') }}</button>
+                </div>
+                <div id="qrCode"></div>
+                <div class="qr-hint" id="qrFormatHint"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentUserId = '';
+    // var on purpose: #166 declares the same globals; var redeclaration is
+    // legal either merge order, a duplicate let would be a SyntaxError.
+    var currentConnsUserId = '';
+    var currentConnsUsername = '';
+    let currentConfig = '';
+    let currentVpnLink = '';
+    let currentConfigName = 'connection';
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let searchQuery = '';
+    let searchTimeout = null;
+
+    const serversData = {{ servers | tojson }};
+    const protocolLabels = {{ server_protocol_labels | tojson }};
+
+    function populateTimeSelect(selectId) {
+        const select = document.getElementById(selectId);
+        if (!select || select.options.length) return;
+        for (let hour = 0; hour < 24; hour++) {
+            for (const minute of [0, 15, 30, 45]) {
+                const value = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+                select.add(new Option(value, value));
+            }
+        }
+        select.add(new Option('23:59', '23:59'));
+        select.value = '23:59';
+    }
+
+    function setupDateTimeFields() {
+        populateTimeSelect('newExpirationTime');
+        populateTimeSelect('editUserExpirationTime');
+    }
+
+    function clearDateTimeFields(dateId, timeId) {
+        const dateEl = document.getElementById(dateId);
+        const timeEl = document.getElementById(timeId);
+        if (dateEl) dateEl.value = '';
+        if (timeEl) timeEl.value = '23:59';
+    }
+
+    function getDateTimeValue(dateId, timeId) {
+        const date = document.getElementById(dateId).value;
+        if (!date) return null;
+        const time = document.getElementById(timeId).value || '23:59';
+        return `${date}T${time}`;
+    }
+
+    function setDateTimeValue(dateId, timeId, value) {
+        const dateEl = document.getElementById(dateId);
+        const timeEl = document.getElementById(timeId);
+        const localValue = toDateTimeLocalValue(value);
+        if (!localValue) {
+            clearDateTimeFields(dateId, timeId);
+            return;
+        }
+        dateEl.value = localValue.slice(0, 10);
+        const timeValue = localValue.slice(11, 16);
+        if (![...timeEl.options].some(option => option.value === timeValue)) {
+            timeEl.add(new Option(timeValue, timeValue));
+        }
+        timeEl.value = timeValue;
+    }
+
+    function handleSearch(val) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            searchQuery = val;
+            currentPage = 1;
+            refreshUsersList();
+        }, 300);
+    }
+
+    function changePage(delta) {
+        currentPage += delta;
+        refreshUsersList();
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
+    }
+
+    /* ===== Фильтры по роли и статусу (только по уже загруженной странице) ===== */
+    const userRoleLabels = {
+        admin: 'Администратор',
+        support: 'Поддержка',
+        user: 'Пользователь',
+        none: _('role_none_badge')
+    };
+    const userStatusLabels = {
+        active: _('active'),
+        expired: 'Истёк',
+        disabled: _('disabled')
+    };
+
+    /* Стрелки трафика: SVG вместо символьных стрелок. */
+    const ICON_ARROW_DOWN = '<svg class="btn-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>';
+    const ICON_ARROW_UP = '<svg class="btn-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+
+    function applyUserFilters() {
+        const grid = document.getElementById('usersGrid');
+        const statusSel = document.getElementById('userStatusFilter');
+        const roleSel = document.getElementById('userRoleFilter');
+        if (!grid || !statusSel || !roleSel) return;
+
+        const status = statusSel.value;
+        const role = roleSel.value;
+        let visible = 0;
+
+        grid.querySelectorAll('tr[data-user-id]').forEach(row => {
+            const show = (!status || row.dataset.status === status)
+                && (!role || row.dataset.role === role);
+            row.classList.toggle('hidden', !show);
+            if (show) visible++;
+        });
+
+        const empty = document.getElementById('usersFilterEmpty');
+        if (empty) empty.classList.toggle('hidden', visible > 0);
+        const wrap = grid.closest('.tt-table-wrap');
+        if (wrap) wrap.classList.toggle('hidden', visible === 0);
+    }
+
+    function resetUserFilters() {
+        const statusSel = document.getElementById('userStatusFilter');
+        const roleSel = document.getElementById('userRoleFilter');
+        if (statusSel) statusSel.value = '';
+        if (roleSel) roleSel.value = '';
+        applyUserFilters();
+    }
+
+
+    /* ===== Send configs and links by email ===== */
+    let mailMode = 'single';
+    let mailUserId = null;
+    let mailPollTimer = null;
+
+    function mailOptionsFromForm() {
+        return {
+            include_configs: document.getElementById('mailIncludeConfigs').checked,
+            include_links: document.getElementById('mailIncludeLinks').checked,
+            subject: document.getElementById('mailSubject').value.trim(),
+            message: document.getElementById('mailMessage').value
+        };
+    }
+
+    function resetMailModal() {
+        document.getElementById('mailSubject').value = '';
+        document.getElementById('mailMessage').value = '';
+        document.getElementById('mailIncludeConfigs').checked = true;
+        document.getElementById('mailIncludeLinks').checked = true;
+        document.getElementById('mailProgress').classList.add('hidden');
+        document.getElementById('mailSendBtn').disabled = false;
+    }
+
+    function openMailModal(dataset) {
+        mailMode = 'single';
+        mailUserId = dataset.id;
+        stopMailPolling();
+        resetMailModal();
+        document.getElementById('mailModalTitle').textContent = `${_('mail_send_title')} — ${dataset.username}`;
+        document.getElementById('mailRecipientGroup').style.display = '';
+        document.getElementById('mailRecipient').value = dataset.email || '';
+        document.getElementById('mailBulkTargets').style.display = 'none';
+        document.getElementById('mailBulkOptions').style.display = 'none';
+        openModal('mailModal');
+    }
+
+    function openBulkMailModal() {
+        mailMode = 'bulk';
+        mailUserId = null;
+        resetMailModal();
+        document.getElementById('mailModalTitle').textContent = _('mail_send_all_title');
+        document.getElementById('mailRecipientGroup').style.display = 'none';
+        document.getElementById('mailBulkTargets').style.display = '';
+        document.getElementById('mailBulkOptions').style.display = '';
+        openModal('mailModal');
+        // A run started earlier (or from another browser tab) keeps going on the
+        // server: show where it is and, if it is still going, follow it.
+        refreshBulkMailStatus().then(status => {
+            if (status && status.running) startMailPolling();
+        });
+    }
+
+    async function submitMail() {
+        const btn = document.getElementById('mailSendBtn');
+        const spinner = document.getElementById('mailSendSpinner');
+        const options = mailOptionsFromForm();
+        if (!options.include_configs && !options.include_links) {
+            showToast(_('mail_error_nothing_to_send'), 'error');
+            return;
+        }
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+        try {
+            if (mailMode === 'single') {
+                options.recipient = document.getElementById('mailRecipient').value.trim();
+                const res = await apiCall(`/api/users/${mailUserId}/mail/send`, 'POST', options);
+                showToast(_('mail_sent_ok').replace('{}', res.email), 'success');
+                closeModal('mailModal');
+            } else {
+                options.only_enabled = document.getElementById('mailOnlyEnabled').checked;
+                options.skip_without_connections = document.getElementById('mailSkipEmpty').checked;
+                await apiCall('/api/users/mail/bulk', 'POST', options);
+                showToast(_('mail_bulk_started'), 'success');
+                startMailPolling();
+            }
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        } finally {
+            spinner.classList.add('hidden');
+            // The status poll disables it again while a run is in flight; this
+            // keeps a refused start (409, bad settings) from freezing the button.
+            btn.disabled = false;
+        }
+    }
+
+    function startMailPolling() {
+        stopMailPolling();
+        mailPollTimer = setInterval(() => refreshBulkMailStatus(true), 2000);
+        refreshBulkMailStatus(true);
+    }
+
+    function stopMailPolling() {
+        if (mailPollTimer) {
+            clearInterval(mailPollTimer);
+            mailPollTimer = null;
+        }
+    }
+
+    // `announce` is on only while we are following a run we started: opening
+    // the dialog must show the last run's numbers without toasting them again.
+    async function refreshBulkMailStatus(announce = false) {
+        let status;
+        try {
+            status = await apiCall('/api/users/mail/bulk/status');
+        } catch (err) {
+            stopMailPolling();
+            return null;
+        }
+        const done = (status.sent || 0) + (status.skipped || 0) + (status.failed || 0);
+        const total = status.total || 0;
+        if (!total) return status;
+
+        const box = document.getElementById('mailProgress');
+        box.classList.remove('hidden');
+        document.getElementById('mailProgressText').textContent =
+            _('mail_bulk_progress').replace('{}', done).replace('{}', total);
+        document.getElementById('mailProgressCounts').textContent =
+            _('mail_bulk_summary').replace('{}', status.sent || 0)
+                .replace('{}', status.skipped || 0).replace('{}', status.failed || 0);
+        document.getElementById('mailProgressBar').style.width = `${total ? (done / total) * 100 : 0}%`;
+        document.getElementById('mailSendBtn').disabled = !!status.running;
+
+        // Counters say how many; this says who, and why they were left out.
+        const leftOut = (status.results || []).filter(row => row.status !== 'sent');
+        document.getElementById('mailResults').innerHTML = leftOut.map(row => `
+            <div><span class="badge badge-${row.status === 'failed' ? 'danger' : 'secondary'}">${_('mail_status_' + row.status)}</span>
+                ${escapeHtml(row.username || row.email || '')} — ${escapeHtml(_(row.reason || ''))}</div>
+        `).join('');
+
+        if (!status.running) {
+            stopMailPolling();
+            if (!announce) {
+                return status;
+            }
+            if (status.error) {
+                showToast(`${_('error')}: ${status.error}`, 'error');
+            } else if (done) {
+                const summary = _('mail_bulk_summary').replace('{}', status.sent || 0)
+                    .replace('{}', status.skipped || 0).replace('{}', status.failed || 0);
+                showToast(summary, (status.failed || 0) ? 'warning' : 'success');
+            }
+        }
+        return status;
+    }
+
+    function escapeJs(value) {
+        return String(value ?? '').replace(/[\\'"\n\r<>]/g, ch => ({
+            '\\': '\\\\', "'": "\\'", '"': '\\"', '\n': '\\n', '\r': '\\r', '<': '\\x3c', '>': '\\x3e'
+        }[ch]));
+    }
+
+    async function refreshUsersList() {
+        const loading = document.getElementById('usersLoading');
+        const container = document.getElementById('usersContainer');
+        const empty = document.getElementById('usersEmpty');
+        const grid = document.getElementById('usersGrid');
+
+        loading.classList.remove('hidden');
+        container.classList.add('hidden');
+        empty.classList.add('hidden');
+
+        try {
+            const data = await apiCall(`/api/users?search=${encodeURIComponent(searchQuery)}&page=${currentPage}&size=${pageSize}`);
+
+            if (data.users.length === 0) {
+                loading.classList.add('hidden');
+                empty.classList.remove('hidden');
+                document.getElementById('usersFilterEmpty').classList.add('hidden');
+                return;
+            }
+
+            const fmtGb = bytes => (bytes / Math.pow(1024, 3)).toFixed(2);
+
+            grid.innerHTML = data.users.map(u => {
+                const role = u.role || 'none';
+                const expired = !!(u.expiration_date && new Date(u.expiration_date) < new Date());
+                const status = !u.enabled ? 'disabled' : (expired ? 'expired' : 'active');
+                const roleBadge = role === 'admin' ? 'success' : (role === 'support' ? 'info' : (role === 'none' ? 'secondary' : 'warn'));
+                const statusBadge = status === 'active' ? 'success' : (status === 'expired' ? 'warn' : 'secondary');
+
+                let trafficHtml = '';
+                if (u.traffic_limit && u.traffic_limit > 0) {
+                    let pct = (u.traffic_used / u.traffic_limit) * 100;
+                    if (pct > 100) pct = 100;
+                    const barColor = pct > 90 ? 'var(--danger)' : (pct > 70 ? 'var(--warning)' : 'var(--accent)');
+                    trafficHtml = `
+                        <div class="tt-usage">
+                            <div class="tt-usage__bar"><span style="width:${pct}%; background:${barColor};"></span></div>
+                            <div class="tt-usage__text">${_('traffic')}: ${fmtGb(u.traffic_used)} ${_('gb')} ${_('out_of').toLowerCase()} ${fmtGb(u.traffic_limit)} ${_('gb')}</div>
+                        </div>`;
+                } else if (u.traffic_used > 0) {
+                    trafficHtml = `
+                        <div class="tt-usage">
+                            <div class="tt-usage__text">${_('traffic')}: ${fmtGb(u.traffic_used)} ${_('gb')}</div>
+                        </div>`;
+                }
+
+                const totalHtml = u.traffic_total > 0
+                    ? `<span>${_('traffic_used_total')}: ${fmtGb(u.traffic_total)} ${_('gb')}</span>` : '';
+                const resetHtml = u.traffic_reset_strategy && u.traffic_reset_strategy !== 'never'
+                    ? `<span>${_('traffic_reset_' + u.traffic_reset_strategy)}</span>` : '';
+
+                return `
+                <tr class="entity-card user-card${u.enabled ? '' : ' tt-row--disabled'}" id="user-${u.id}"
+                    data-user-id="${u.id}" data-status="${status}" data-role="${role}">
+                    <td>
+                        <div class="user-card-body">
+                            <div class="tt-user-name">
+                                ${escapeHtml(u.username)}
+                                <span class="badge badge-secondary">${escapeHtml(u.source || '')}</span>
+                            </div>
+                            <div class="tt-user-meta">
+                                ${u.email ? `<span>${ICON_MAIL} ${escapeHtml(u.email)}</span>` : ''}
+                                ${u.telegramId ? `<span>${ICON_CHAT} ${escapeHtml(u.telegramId)}</span>` : ''}
+                                ${u.created_at ? `<span>${ICON_CALENDAR} Создан: ${escapeHtml(u.created_at.substring(0, 10))}</span>` : ''}
+                                ${totalHtml}
+                                ${resetHtml}
+                            </div>
+                            ${u.description ? `<div class="tt-user-meta"><span>${escapeHtml(u.description)}</span></div>` : ''}
+                            ${trafficHtml}
+                        </div>
+                    </td>
+                    <td data-label="${_('role_label')}">
+                        <span class="badge badge-${roleBadge}">${userRoleLabels[role] || role.toUpperCase()}</span>
+                    </td>
+                    <td data-label="${_('connections')}" class="tt-metric-cell">
+                        <button type="button" class="tt-conn-link"
+                            onclick="viewUserConnections('${u.id}', '${u.username.replace(/'/g, "\\'")}')"
+                            title="${_('user_conns_title')}">${ICON_LINK} ${u.connections_count}</button>
+                    </td>
+                    <td data-label="Срок действия" class="tt-metric-cell${expired ? ' tt-metric-cell--danger' : ''}">
+                        ${u.expiration_date ? new Date(u.expiration_date).toLocaleDateString() : _('no_expiry')}
+                    </td>
+                    <td data-label="${_('status')}">
+                        <span class="badge badge-${statusBadge}">${userStatusLabels[status]}</span>
+                    </td>
+                    <td class="tt-cell-actions tt-col-actions">
+                        <div class="tt-row-actions entity-card-actions">
+                        {% if current_user.role == 'admin' %}
+                        <button class="btn btn-secondary btn-sm btn-icon" 
+                                onclick="openAddConnectionForUser('${u.id}', '${u.username}')" 
+                                title="${_('add_connection')}">${ICON_PLUS}</button>
+                        <button class="btn btn-secondary btn-sm btn-icon" 
+                                onclick='openEditUser({"id": "${u.id}", "username": "${u.username}", "tg": "${u.telegramId || ""}", "email": "${u.email || ""}", "desc": "${u.description || ""}", "limit": "${u.traffic_limit ? (u.traffic_limit / Math.pow(1024, 3)).toFixed(2) : 0}", "strategy": "${u.traffic_reset_strategy || 'never'}", "expiration": "${u.expiration_date || ''}"})'
+                                title="${_('edit')}">${ICON_PENCIL}</button>
+                        <button class="btn btn-secondary btn-sm btn-icon" onclick="openShareModal(this.dataset)"
+                                data-id="${u.id}" data-username="${u.username}" data-token="${u.share_token || ''}"
+                                data-enabled="${u.share_enabled ? 'true' : 'false'}"
+                                data-haspassword="${u.has_share_password ? 'true' : 'false'}"
+                                title="${_('share_access')}">${ICON_SHARE}</button>
+                        <button class="btn btn-secondary btn-sm btn-icon" onclick="openMailModal(this.dataset)"
+                                data-id="${u.id}" data-username="${u.username}" data-email="${u.email || ''}"
+                                ${u.email ? '' : 'disabled'}
+                                title="${u.email ? _('mail_send_btn') : _('mail_no_email_hint')}">${ICON_MAIL}</button>
+                        ${u.id !== {{ current_user.id|tojson }} ? `
+                            <button class="btn btn-secondary btn-sm btn-icon peer-toggle${u.enabled ? '' : ' peer-toggle-off'}" onclick="toggleUser(this.dataset, this)"
+                                    data-id="${u.id}" data-enable="${u.enabled ? 'false' : 'true'}"
+                                    title="${u.enabled ? _('stop_btn') : _('start_btn')}">
+                                ${ICON_POWER}
+                            </button>
+                            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteUser('${u.id}')" title="${_('delete')}">${ICON_TRASH}</button>
+                        ` : ''}
+                        {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            `;
+            }).join('');
+
+            // Pagination UI
+            document.getElementById('pageInfo').textContent = _('page_info').replace('{}', data.page).replace('{}', data.pages || 1);
+            document.getElementById('prevPage').disabled = (data.page <= 1);
+            document.getElementById('nextPage').disabled = (data.page >= data.pages);
+
+            loading.classList.add('hidden');
+            container.classList.remove('hidden');
+            applyUserFilters();
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        }
+    }
+
+    // Call on load
+    document.addEventListener('DOMContentLoaded', () => {
+        setupDateTimeFields();
+        refreshUsersList();
+        // The role select starts on "none", where the password is optional;
+        // without this the label claims it is required until the select fires
+        // a change event.
+        toggleNewUserPasswordReq();
+    });
+
+    function updateProtocols(serverId, selectId, groupId = null) {
+        const select = document.getElementById(selectId);
+        const group = groupId ? document.getElementById(groupId) : null;
+        select.innerHTML = '';
+
+        if (serverId === '') {
+            if (group) group.style.display = 'none';
+            return;
+        }
+
+        const server = serversData[serverId];
+        const protocols = server.protocols || {};
+        let count = 0;
+
+        for (const [key, info] of Object.entries(protocols)) {
+            if (info.installed && key !== 'exit') {  // exit node has no client connections
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = (protocolLabels[serverId] || {})[key] || key;
+                select.appendChild(opt);
+                count++;
+            }
+        }
+
+        if (count > 0) {
+            if (group) group.style.display = '';
+        } else {
+            const opt = document.createElement('option');
+            opt.textContent = _('no_protocols');
+            opt.disabled = true;
+            select.appendChild(opt);
+            if (group) group.style.display = '';
+        }
+    }
+
+    // Show/hide connection fields
+    document.getElementById('newUserServer').addEventListener('change', (e) => {
+        const show = e.target.value !== '';
+        updateProtocols(e.target.value, 'newUserProtocol', 'newUserProtoGroup');
+        document.getElementById('newUserConnNameGroup').style.display = show ? '' : 'none';
+        updateTelemtOptions('newUserProtocol', 'newUserTelemtOptions');
+    });
+
+    document.getElementById('newUserProtocol').addEventListener('change', (e) => {
+        updateTelemtOptions('newUserProtocol', 'newUserTelemtOptions');
+    });
+
+    function updateTelemtOptions(protoSelectId, optionsId) {
+        const proto = document.getElementById(protoSelectId).value;
+        const options = document.getElementById(optionsId);
+        if (options) options.style.display = (proto === 'telemt') ? 'block' : 'none';
+    }
+
+    document.getElementById('ucServer').addEventListener('change', (e) => {
+        updateProtocols(e.target.value, 'ucProtocol');
+        if (document.getElementById('ucMode').value === 'existing') {
+            fetchExistingClients();
+        }
+    });
+
+    document.getElementById('ucProtocol').addEventListener('change', (e) => {
+        if (document.getElementById('ucMode').value === 'existing') {
+            fetchExistingClients();
+        }
+        updateTelemtOptions('ucProtocol', 'ucTelemtOptions');
+    });
+
+    function toggleNewUserPasswordReq() {
+        const needsPass = document.getElementById('newRole').value !== 'none';
+        const input = document.getElementById('newPassword');
+        input.required = needsPass;
+        document.getElementById('newPasswordLabel').textContent =
+            needsPass ? _('password_label') : _('password_label') + ' (' + _('optional') + ')';
+        // The hint only holds for "none"; leaving it up next to a required
+        // field makes the form contradict itself.
+        document.getElementById('newPasswordHint').style.display = needsPass ? 'none' : '';
+    }
+
+    async function addUser(e) {
+        e.preventDefault();
+        const role = document.getElementById('newRole').value;
+        const password = document.getElementById('newPassword').value;
+        if (role !== 'none' && !password) {
+            showToast(_('password_required_for_role'), 'error');
+            return;
+        }
+        const btn = document.getElementById('addUserBtn');
+        const text = document.getElementById('addUserBtnText');
+        const spinner = document.getElementById('addUserSpinner');
+        btn.disabled = true;
+        text.textContent = _('creating');
+        spinner.classList.remove('hidden');
+        try {
+            const body = {
+                username: document.getElementById('newUsername').value,
+                password: password || null,
+                role: role,
+                telegramId: document.getElementById('newTelegramId').value || null,
+                email: document.getElementById('newEmail').value || null,
+                description: document.getElementById('newDescription').value || null,
+                traffic_limit: parseFloat(document.getElementById('newTrafficLimit').value || '0'),
+                traffic_reset_strategy: document.getElementById('newTrafficResetStrategy').value,
+                expiration_date: getDateTimeValue('newExpirationDate', 'newExpirationTime'),
+            };
+            const serverId = document.getElementById('newUserServer').value;
+            if (serverId !== '') {
+                body.server_id = parseInt(serverId);
+                body.protocol = document.getElementById('newUserProtocol').value;
+                body.connection_name = document.getElementById('newUserConnName').value || null;
+                if (body.protocol === 'telemt') {
+                    body.telemt_quota = document.getElementById('newUserTelemtQuota').value || null;
+                    body.telemt_max_ips = parseInt(document.getElementById('newUserTelemtMaxIps').value) || null;
+                    body.telemt_expiry = document.getElementById('newUserTelemtExpiry').value || null;
+                    body.telemt_secret = document.getElementById('newUserTelemtSecret').value || null;
+                    body.telemt_ad_tag = document.getElementById('newUserTelemtAdTag').value || null;
+                    body.telemt_max_conns = parseInt(document.getElementById('newUserTelemtMaxConns').value) || null;
+                }
+            }
+            const result = await apiCall('/api/users/add', 'POST', body);
+            showToast(_('success'), 'success');
+
+            if (result.config) {
+                currentConfig = result.config;
+                currentVpnLink = result.vpn_link || '';
+                currentConfigName = body.username;
+                document.getElementById('configModalTitle').textContent = `${_('config')} — ${body.username}`;
+                document.getElementById('configText').textContent = result.config;
+                document.getElementById('vpnLinkText').textContent = currentVpnLink;
+                switchConfigTab('conf');
+                closeModal('addUserModal');
+                openModal('configModal');
+                generateQR(result.config, result.vpn_qr_chunks);
+            } else {
+                setTimeout(() => window.location.reload(), 500);
+            }
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            text.textContent = _('create');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    async function deleteUser(userId) {
+        if (!confirm(_('delete_user_confirm'))) return;
+        try {
+            await apiCall(`/api/users/${userId}/delete`, 'POST');
+            showToast(_('success'), 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        }
+    }
+
+    async function toggleUser(dataset, btn) {
+        const userId = dataset.id;
+        const enable = dataset.enable === 'true';
+        const original = btn ? btn.innerHTML : null;
+        // Lock the whole user card and swap the bulb for a spinner
+        const row = btn ? btn.closest('.client-item') : null;
+        if (row) {
+            row.classList.add('client-toggling');
+            row.querySelectorAll('button').forEach(b => b.disabled = true);
+        }
+        if (btn) btn.innerHTML = '<span class="spinner"></span>';
+        try {
+            const action = enable ? _('enabling') : _('disabling');
+            showToast(`${action}...`, 'info');
+            await apiCall(`/api/users/${userId}/toggle`, 'POST', { enabled: enable });
+            showToast(enable ? _('user_enabled') : _('user_disabled'), 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (err) {
+            if (row) {
+                row.classList.remove('client-toggling');
+                row.querySelectorAll('button').forEach(b => b.disabled = false);
+            }
+            if (btn && original !== null) btn.innerHTML = original;
+            showToast(`${_('error')}: ` + err.message, 'error');
+        }
+    }
+
+    function openAddConnectionForUser(userId, username) {
+        currentUserId = userId;
+        document.getElementById('addUserConnTitle').textContent = `${_('add_connection')} — ${username}`;
+        document.getElementById('ucName').value = `${username}_vpn`;
+        // Restore the options used for the previous add (mode/server/protocol)
+        let prefs = null;
+        try { prefs = JSON.parse(localStorage.getItem('addUserConnPrefs') || 'null'); } catch (e) {}
+        const modeEl = document.getElementById('ucMode');
+        const serverEl = document.getElementById('ucServer');
+        if (prefs) {
+            if ([...modeEl.options].some(o => o.value === prefs.mode)) modeEl.value = prefs.mode;
+            if ([...serverEl.options].some(o => o.value === String(prefs.server))) serverEl.value = String(prefs.server);
+        } else {
+            modeEl.value = 'new';
+        }
+        updateProtocols(serverEl.value, 'ucProtocol');
+        const protoEl = document.getElementById('ucProtocol');
+        if (prefs && [...protoEl.options].some(o => o.value === prefs.protocol)) protoEl.value = prefs.protocol;
+        toggleUCMode();
+        openModal('addUserConnModal');
+    }
+
+    function toggleUCMode() {
+        const mode = document.getElementById('ucMode').value;
+        const existingGroup = document.getElementById('ucExistingClientGroup');
+        const ucAddBtnText = document.getElementById('ucAddBtnText');
+
+        if (mode === 'existing') {
+            existingGroup.style.display = 'block';
+            ucAddBtnText.textContent = _('linking');
+            fetchExistingClients();
+        } else {
+            existingGroup.style.display = 'none';
+            ucAddBtnText.textContent = _('add');
+        }
+    }
+
+    async function fetchExistingClients() {
+        const serverId = document.getElementById('ucServer').value;
+        const protocol = document.getElementById('ucProtocol').value;
+        const select = document.getElementById('ucExistingClient');
+        select.innerHTML = `<option value="">${_('loading')}</option>`;
+
+        try {
+            const data = await apiCall(`/api/servers/${serverId}/${protocol}/clients`);
+            if (!data.clients || data.clients.length === 0) {
+                select.innerHTML = `<option value="">${_('no_free_conns')}</option>`;
+                return;
+            }
+            select.innerHTML = '';
+            data.clients.forEach(c => {
+                select.innerHTML += `<option value="${c.id}">${c.name || 'Unnamed'} (${c.id.substring(0, 8)}...)</option>`;
+            });
+        } catch (err) {
+            select.innerHTML = `<option value="">${_('error')}: ${err.message}</option>`;
+        }
+    }
+
+
+    async function doAddUserConnection() {
+        const btn = document.getElementById('ucAddBtn');
+        const text = document.getElementById('ucAddBtnText');
+        const spinner = document.getElementById('ucAddSpinner');
+        btn.disabled = true;
+
+        const mode = document.getElementById('ucMode').value;
+        text.textContent = mode === 'existing' ? _('linking') : _('creating');
+        spinner.classList.remove('hidden');
+
+        try {
+            const body = {
+                server_id: parseInt(document.getElementById('ucServer').value),
+                protocol: document.getElementById('ucProtocol').value,
+                name: document.getElementById('ucName').value || 'VPN Connection',
+            };
+
+            // Remember the options for the next add
+            try {
+                localStorage.setItem('addUserConnPrefs', JSON.stringify({
+                    mode, server: document.getElementById('ucServer').value, protocol: body.protocol
+                }));
+            } catch (e) {}
+
+            if (mode === 'existing') {
+                const selected = [...document.getElementById('ucExistingClient').selectedOptions]
+                    .map(o => o.value).filter(Boolean);
+                if (!selected.length) throw new Error(_('select_connection'));
+                let ok = 0, failed = 0, lastErr = '';
+                for (const clientId of selected) {
+                    try {
+                        await apiCall(`/api/users/${currentUserId}/connections/add`, 'POST', { ...body, client_id: clientId });
+                        ok++;
+                    } catch (e) {
+                        failed++;
+                        lastErr = e.message;
+                    }
+                }
+                if (!ok) throw new Error(lastErr || _('error'));
+                showToast(failed
+                    ? `${_('conn_linked')}: ${ok}, ${_('error')}: ${failed} (${lastErr})`
+                    : _('conn_linked') + (ok > 1 ? ` (${ok})` : ''), failed ? 'error' : 'success');
+                closeModal('addUserConnModal');
+                refreshUsersList();
+                const connsModal = document.getElementById('userConnsModal');
+                if (connsModal.classList.contains('active') && currentConnsUserId === currentUserId) {
+                    viewUserConnections(currentConnsUserId, currentConnsUsername);
+                }
+                return;
+            }
+
+            if (body.protocol === 'telemt') {
+                body.telemt_quota = document.getElementById('ucTelemtQuota').value || null;
+                body.telemt_max_ips = parseInt(document.getElementById('ucTelemtMaxIps').value) || null;
+                body.telemt_expiry = document.getElementById('ucTelemtExpiry').value || null;
+                body.telemt_secret = document.getElementById('ucTelemtSecret').value || null;
+                body.telemt_ad_tag = document.getElementById('ucTelemtAdTag').value || null;
+                body.telemt_max_conns = parseInt(document.getElementById('ucTelemtMaxConns').value) || null;
+            }
+
+            // Keep the same operation across a timeout/reload. It is not a
+            // credential. Clear it only after a confirmed successful response.
+            const operationKey = 'peer-create:' + JSON.stringify([
+                currentUserId, body.server_id, body.protocol, body.name]);
+            try {
+                let operationId = sessionStorage.getItem(operationKey);
+                if (!operationId) {
+                    const bytes = crypto.getRandomValues(new Uint8Array(16));
+                    bytes[6] = (bytes[6] & 15) | 64;
+                    bytes[8] = (bytes[8] & 63) | 128;
+                    const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+                    operationId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+                    sessionStorage.setItem(operationKey, operationId);
+                }
+                body.operation_id = operationId;
+            } catch (e) { /* Backend uses a stable request identity fallback. */ }
+            const result = await apiCall(`/api/users/${currentUserId}/connections/add`, 'POST', body);
+            try { sessionStorage.removeItem(operationKey); } catch (e) {}
+            showToast(_('connection_created').replace('{}', body.name), 'success');
+            closeModal('addUserConnModal');
+
+            // Linking an existing peer: no config popup — the admin already
+            // has that config; just refresh the list.
+            if (result.config && mode !== 'existing') {
+                currentConfig = result.config;
+                currentVpnLink = result.vpn_link || '';
+                currentConfigName = document.getElementById('ucName').value.replace(/\s+/g, '_');
+                document.getElementById('configModalTitle').textContent = _('config');
+                document.getElementById('configText').textContent = result.config;
+                document.getElementById('vpnLinkText').textContent = currentVpnLink;
+                switchConfigTab('conf');
+                openModal('configModal');
+                generateQR(result.config, result.vpn_qr_chunks);
+            }
+            // Refresh the grid via AJAX — no full page reload.
+            refreshUsersList();
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            text.textContent = _('create');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    // var on purpose: #167 declares the same globals; var redeclaration is
+    // legal either merge order, a duplicate let would be a SyntaxError.
+    var currentConnsUserId = null;
+    var currentConnsUsername = '';
+
+    function formatConnDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d)) return '';
+        return d.toLocaleDateString();
+    }
+
+    async function viewUserConnections(userId, username) {
+        currentConnsUserId = userId;
+        currentConnsUsername = username;
+        document.getElementById('userConnsTitle').textContent = `${_('connections')} — ${username}`;
+        const listEl = document.getElementById('userConnsList');
+        listEl.innerHTML = `<div class="tt-list-note">${_('loading')}</div>`;
+        openModal('userConnsModal');
+        try {
+            const data = await apiCall(`/api/users/${userId}/connections`);
+            if (!data.connections || data.connections.length === 0) {
+                listEl.innerHTML = `<div class="tt-list-note">${_('no_connections')}</div>`;
+                return;
+            }
+            listEl.innerHTML = '';
+            data.connections.forEach(c => {
+                const sid = Number(c.server_id) || 0;
+                const proto = c.protocol || 'awg';
+                // Show the live peer name from the instance (matched by client
+                // id / IP) — the panel-side record name is just a label.
+                const name = c.peer_name || c.name || 'Connection';
+                const enabled = c.enabled !== false;
+                const ip = (c.allowed_ips || '').split(',')[0].split('/')[0].trim();
+                const maxSpeed = parseFloat(c.max_speed || 0) || 0;
+                const dateStr = formatConnDate(c.created_at);
+                const toggleCls = enabled ? 'peer-toggle' : 'peer-toggle peer-toggle-off';
+                const toggleTitle = enabled ? _('stop_peer_title') : _('start_peer_title');
+                const disabledStyle = enabled ? '' : 'opacity:0.5;';
+                // Deep link: opens the server page on the right instance and
+                // frames this peer's card there.
+                const serverLink = `/server/${sid}?protocol=${encodeURIComponent(proto)}&highlight=${encodeURIComponent(c.client_id)}`;
+                listEl.innerHTML += `
+                    <div class="client-item" data-maxspeed="${maxSpeed}" data-server-id="${sid}" data-protocol="${escapeHtml(proto)}" data-client-id="${escapeHtml(c.client_id)}" data-peer-name="${escapeHtml(name)}">
+                        <div class="client-info" style="${disabledStyle}">
+                            <div class="client-avatar">${ICON_KEY}</div>
+                            <div>
+                                <div class="client-name">${escapeHtml(name)}${ip ? ` <span class="client-ip">${escapeHtml(ip)}</span>` : ''}</div>
+                                <div class="client-meta">
+                                    <span>${ICON_SERVERS} <a href="${serverLink}" target="_blank" rel="noopener">${escapeHtml(c.server_name || '')}</a></span>
+                                    <span>${escapeHtml(c.protocol_name || (protocolLabels[sid] || {})[proto] || proto)}</span>
+                                    ${dateStr ? `<span>${ICON_CALENDAR} ${dateStr}</span>` : ''}
+                                    <span class="traffic-badge traffic-limit" title="${_('max_speed')}">${maxSpeed > 0 ? maxSpeed + ' Mbps' : 'Без лимита'}</span>
+                                    ${c.data_sent ? `<span class="traffic-badge traffic-down">${ICON_ARROW_DOWN} ${escapeHtml(c.data_sent)}</span>` : ''}
+                                    ${c.data_received ? `<span class="traffic-badge traffic-up">${ICON_ARROW_UP} ${escapeHtml(c.data_received)}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="client-actions">
+                            <button class="btn btn-secondary btn-sm btn-icon" onclick="renameUserConnection(${sid}, '${escapeJs(c.client_id)}', '${escapeJs(proto)}', '${escapeJs(name)}')" title="${_('rename')}">${ICON_PENCIL}</button>
+                            <button class="btn btn-secondary btn-sm btn-icon" onclick="showUserConnectionConfig(${sid}, '${escapeJs(c.client_id)}', '${escapeJs(proto)}', '${escapeJs(name)}')" title="${_('config')}">${ICON_FILE}</button>
+                            <button class="btn btn-secondary btn-sm btn-icon ${toggleCls}" onclick="toggleUserConnection(${sid}, '${escapeJs(c.client_id)}', '${escapeJs(proto)}', ${!enabled}, this)" title="${toggleTitle}">${ICON_POWER}</button>
+                            <button class="btn btn-secondary btn-sm btn-icon" onclick="unlinkUserConnection(${sid}, '${escapeJs(c.client_id)}', '${escapeJs(proto)}', '${escapeJs(name)}', ${enabled})" title="${_('unlink_key_title').replace('{}', name).replace('{}', currentConnsUsername)}"><svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></button>
+                            <button class="btn btn-danger btn-sm btn-icon" onclick="removeUserConnection(${sid}, '${escapeJs(c.client_id)}', '${escapeJs(proto)}', '${escapeJs(name)}', ${enabled})" title="${_('delete')}">${ICON_TRASH}</button>
+                        </div>
+                    </div>
+                `;
+            });
+            PeerQueue.reapplyRowStates();
+        } catch (err) {
+            listEl.innerHTML = `<div class="tt-list-note tt-list-note--error">${_('error')}: ${err.message}</div>`;
+        }
+    }
+
+    window.peerQueueOnIdle = function () {
+        if (currentConnsUserId !== null) viewUserConnections(currentConnsUserId, currentConnsUsername);
+    };
+
+    async function unlinkUserConnection(serverId, clientId, proto, name, enabled) {
+        if (!confirm(_('unlink_confirm'))) return;
+        const payload = {
+            server_id: serverId, protocol: proto, client_id: clientId,
+        };
+        try {
+            await apiCall(`/api/users/${currentConnsUserId}/connections/unlink`, 'POST', payload);
+            showToast(_('conn_unlinked'), 'success');
+            viewUserConnections(currentConnsUserId, currentConnsUsername);
+        } catch (err) {
+            const code = err.payload && err.payload.code;
+            if (code === 'peer_active_stop_required' && err.payload.can_stop) {
+                if (!confirm(_('unlink_stop_and_unlink_confirm'))) return;
+                payload.stop = true;
+            } else if (code === 'final_counter_read_failed' && err.payload.can_force) {
+                if (!confirm(_('unlink_unverified_confirm'))) return;
+                payload.allow_unverified = true;
+            } else {
+                showToast(`${_('error')}: ` + err.message, 'error');
+                return;
+            }
+            try {
+                await apiCall(`/api/users/${currentConnsUserId}/connections/unlink`, 'POST', payload);
+                showToast(_('conn_unlinked'), 'success');
+                viewUserConnections(currentConnsUserId, currentConnsUsername);
+            } catch (retryErr) {
+                showToast(`${_('error')}: ` + retryErr.message, 'error');
+            }
+        }
+    }
+
+    function toggleUserConnection(serverId, clientId, proto, enable, btn) {
+        const row = btn && btn.closest('.client-item');
+        PeerQueue.enqueue({
+            serverId: serverId, protocol: proto, clientId: clientId,
+            peerName: row ? row.dataset.peerName : clientId,
+            action: enable ? 'enable' : 'disable',
+        });
+    }
+
+    async function renameUserConnection(serverId, clientId, proto, oldName) {
+        const newName = prompt(_('rename'), oldName);
+        if (!newName || newName.trim() === '' || newName === oldName) return;
+        try {
+            await apiCall(`/api/servers/${serverId}/connections/rename`, 'POST', {
+                protocol: proto, client_id: clientId, new_name: newName.trim(),
+            });
+            showToast(_('success'), 'success');
+            viewUserConnections(currentConnsUserId, currentConnsUsername);
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        }
+    }
+
+    function removeUserConnection(serverId, clientId, proto, name, enabled) {
+        if (!confirm(`${_('delete')}: ${name}?`)) return;
+        PeerQueue.enqueue({
+            serverId: serverId, protocol: proto, clientId: clientId,
+            peerName: name, action: 'delete',
+        });
+    }
+
+    // Config tabs
+    function switchConfigTab(tab) {
+        document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+        const tabs = document.querySelectorAll('.config-tab');
+        const panels = { conf: 'panel-conf', vpn: 'panel-vpn', qr: 'panel-qr' };
+        const tabIdx = { conf: 0, vpn: 1, qr: 2 };
+        tabs[tabIdx[tab]].classList.add('active');
+        document.getElementById(panels[tab]).classList.add('active');
+        // the frame series only animates while its panel is on screen
+        if (tab === 'qr') { renderQR(); } else { stopQrAnimation(); }
+    }
+
+    // The QR shows one of two payloads: Amnezia's own config format, split into
+    // the frame series ImportController::parseQrCodeChunk reassembles, or the
+    // raw config, which is all AmneziaWG and wg-quick understand. The series
+    // exists because a whole config in one code lands at QR version 21-26,
+    // while the Android scanner reads 640x480 camera frames and cannot decode
+    // anything that dense. Every frame below stays under 55x55 modules.
+    const QR_FRAME_MS = 800;
+
+    let currentQrConfig = '';
+    let currentQrChunks = [];
+    let currentQrFormat = 'amnezia';
+    let qrFrame = 0;
+    let qrTimer = null;
+
+    function setQrFormat(format) {
+        currentQrFormat = format;
+        qrFrame = 0;
+        renderQR();
+    }
+
+    function generateQR(text, chunks) {
+        currentQrConfig = text || '';
+        currentQrChunks = chunks || [];
+        qrFrame = 0;
+        renderQR();
+    }
+
+    function stopQrAnimation() {
+        if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
+    }
+
+    function drawQr(text, size) {
+        const container = document.getElementById('qrCode');
+        if (!container) return;
+        container.innerHTML = '';
+        try {
+            new QRCode(container, {
+                text: text, width: size, height: size,
+                colorDark: '#000000', colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        } catch (e) {
+            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;">${_('qr_error')}</div>`;
+        }
+    }
+
+    function renderQR() {
+        stopQrAnimation();
+        const named = currentQrFormat === 'amnezia' && currentQrChunks.length > 0;
+        const switcher = document.getElementById('qrFormat');
+        if (switcher) {
+            switcher.classList.toggle('hidden', currentQrChunks.length === 0);
+            switcher.querySelectorAll('.qr-format-btn').forEach(b =>
+                b.classList.toggle('active', b.dataset.fmt === (named ? 'amnezia' : 'wireguard')));
+        }
+        const hint = document.getElementById('qrFormatHint');
+        if (!named) {
+            if (hint) hint.textContent = _('qr_format_wireguard_hint');
+            drawQr(currentQrConfig, qrSize(document.getElementById('qrCode') || document.body, 280));
+            return;
+        }
+        const paint = () => {
+            drawQr(currentQrChunks[qrFrame], qrSize(document.getElementById('qrCode') || document.body, 300));
+            if (hint) {
+                hint.textContent = currentQrChunks.length > 1
+                    ? `${_('qr_format_amnezia_hint')} ${qrFrame + 1}/${currentQrChunks.length}`
+                    : _('qr_format_amnezia_hint');
+            }
+        };
+        paint();
+        if (currentQrChunks.length > 1) {
+            qrTimer = setInterval(() => {
+                // the modal was closed or another tab opened -- offsetParent is
+                // null once the panel is off screen, so stop burning a timer
+                const container = document.getElementById('qrCode');
+                if (!container || !container.offsetParent) { stopQrAnimation(); return; }
+                qrFrame = (qrFrame + 1) % currentQrChunks.length;
+                paint();
+            }, QR_FRAME_MS);
+        }
+    }
+    async function showUserConnectionConfig(serverId, clientId, protocol, connName) {
+        try {
+            showToast(_('loading'), 'info');
+            const result = await apiCall(`/api/servers/${serverId}/connections/config`, 'POST', {
+                protocol: protocol, client_id: clientId,
+            });
+            if (result.config) {
+                currentConfig = result.config;
+                currentVpnLink = result.vpn_link || '';
+                currentConfigName = connName.replace(/\s+/g, '_');
+                document.getElementById('configModalTitle').textContent = `${_('config')} — ${connName}`;
+                document.getElementById('configText').textContent = result.config;
+                document.getElementById('vpnLinkText').textContent = currentVpnLink;
+                switchConfigTab('conf');
+                openModal('configModal');
+                generateQR(result.config, result.vpn_qr_chunks);
+            }
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        }
+    }
+</script>
+
+<!-- ===== Share User Modal ===== -->
+<div class="modal-backdrop" id="shareUserModal">
+    <div class="modal modal--narrow">
+        <div class="modal-header">
+            <h2 class="modal-title" id="shareModalTitle">{{ _('share_access') }}</h2>
+            <button class="modal-close" onclick="closeModal('shareUserModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <div class="form-group">
+            <label class="tt-check" for="shareEnabled">
+                <input type="checkbox" id="shareEnabled" onchange="updateShareSetup()"> {{ _('enable_public_access') }}
+            </label>
+        </div>
+
+        <div id="shareSetupFields" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" for="sharePassword">{{ _('share_password_label') }}</label>
+                <input class="form-input" type="password" id="sharePassword" placeholder="{{ _('new_password_hint') }}">
+                <div class="form-hint">{{ _('share_password_hint') }}</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="shareLink">{{ _('public_link_label') }}</label>
+                <div class="tt-field-row">
+                    <input class="form-input" type="text" id="shareLink" readonly>
+                    <button type="button" class="btn btn-secondary btn-sm btn-icon" onclick="copyShareLink()" title="{{ _('copied') }}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('shareUserModal')">{{ _('cancel') }}</button>
+            <button class="btn btn-primary" onclick="saveShareSetup()" id="saveShareBtn">
+                <span id="saveShareBtnText">{{ _('save') }}</span>
+                <div class="spinner hidden" id="saveShareSpinner"></div>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Send by email ===== -->
+<div class="modal-backdrop" id="mailModal">
+    <div class="modal modal--wide">
+        <div class="modal-header">
+            <h2 class="modal-title" id="mailModalTitle">{{ _('mail_send_title') }}</h2>
+            <button class="modal-close" onclick="closeModal('mailModal')" aria-label="{{ _('cancel') }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <div class="form-group" id="mailRecipientGroup">
+            <label class="form-label" for="mailRecipient">{{ _('mail_recipient_label') }}</label>
+            <input class="form-input" type="email" id="mailRecipient" placeholder="user@example.com">
+        </div>
+
+        <p class="form-hint" id="mailBulkTargets" style="display:none;">{{ _('mail_bulk_targets') }}</p>
+
+        <div class="form-group">
+            <label class="tt-check" for="mailIncludeConfigs">
+                <input type="checkbox" id="mailIncludeConfigs" checked> {{ _('mail_include_configs') }}
+            </label>
+            <label class="tt-check" for="mailIncludeLinks">
+                <input type="checkbox" id="mailIncludeLinks" checked> {{ _('mail_include_links') }}
+            </label>
+        </div>
+
+        <div class="form-group" id="mailBulkOptions" style="display:none;">
+            <label class="tt-check" for="mailOnlyEnabled">
+                <input type="checkbox" id="mailOnlyEnabled" checked> {{ _('mail_only_enabled') }}
+            </label>
+            <label class="tt-check" for="mailSkipEmpty">
+                <input type="checkbox" id="mailSkipEmpty" checked> {{ _('mail_skip_empty') }}
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="mailSubject">{{ _('mail_subject_label') }}</label>
+            <input class="form-input" type="text" id="mailSubject" placeholder="{{ _('mail_subject_placeholder') }}">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="mailMessage">{{ _('mail_message_label') }}</label>
+            <textarea class="form-input" id="mailMessage" rows="3"
+                placeholder="{{ _('mail_message_placeholder') }}"></textarea>
+        </div>
+
+        <div id="mailProgress" class="tt-progress hidden">
+            <div class="tt-progress__head">
+                <span id="mailProgressText"></span>
+                <span id="mailProgressCounts"></span>
+            </div>
+            <div class="tt-progress__track">
+                <div id="mailProgressBar" class="tt-progress__fill"></div>
+            </div>
+            <p class="form-hint">{{ _('mail_bulk_running_note') }}</p>
+            <div id="mailResults" class="tt-progress__results"></div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('mailModal')">{{ _('cancel') }}</button>
+            <button class="btn btn-primary" onclick="submitMail()" id="mailSendBtn">
+                <span id="mailSendBtnText">{{ _('mail_send_action') }}</span>
+                <div class="spinner hidden" id="mailSendSpinner"></div>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentSharedUser = null;
+
+    function toDateTimeLocalValue(value) {
+        if (!value) return '';
+        const raw = String(value).trim();
+        if (!raw) return '';
+        const match = raw.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+        if (match) return match[1];
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return '';
+        const offsetMs = parsed.getTimezoneOffset() * 60000;
+        return new Date(parsed.getTime() - offsetMs).toISOString().slice(0, 16);
+    }
+
+    function openEditUser(data) {
+        document.getElementById('editUserId').value = data.id;
+        document.getElementById('editUserTitle').textContent = data.username;
+        document.getElementById('editUserName').value = data.username || '';
+        document.getElementById('editUserTG').value = data.tg || '';
+        document.getElementById('editUserEmail').value = data.email || '';
+        document.getElementById('editUserDesc').value = data.desc || '';
+        document.getElementById('editUserLimit').value = data.limit || '0';
+        document.getElementById('editUserTrafficResetStrategy').value = data.strategy || 'never';
+        setDateTimeValue('editUserExpiration', 'editUserExpirationTime', data.expiration);
+        document.getElementById('editUserPass').value = '';
+        openModal('editUserModal');
+    }
+
+    async function resetUserTraffic() {
+        const uid = document.getElementById('editUserId').value;
+        if (!uid || !confirm(_('reset_traffic_confirm'))) return;
+
+        const btn = document.getElementById('resetTrafficBtn');
+        const text = document.getElementById('resetTrafficBtnText');
+        const spinner = document.getElementById('resetTrafficSpinner');
+        btn.disabled = true;
+        text.textContent = _('resetting');
+        spinner.classList.remove('hidden');
+
+        try {
+            await apiCall(`/api/users/${uid}/traffic/reset`, 'POST');
+            showToast(_('traffic_reset_success'), 'success');
+            refreshUsersList();
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            text.textContent = _('reset_traffic');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    async function saveEditUser() {
+        const uid = document.getElementById('editUserId').value;
+        const btn = document.getElementById('saveEditBtn');
+        const text = document.getElementById('saveEditBtnText');
+        const spinner = document.getElementById('saveEditSpinner');
+
+        const payload = {
+            username: document.getElementById('editUserName').value.trim(),
+            telegramId: document.getElementById('editUserTG').value,
+            email: document.getElementById('editUserEmail').value,
+            description: document.getElementById('editUserDesc').value,
+            traffic_limit: parseFloat(document.getElementById('editUserLimit').value || '0'),
+            traffic_reset_strategy: document.getElementById('editUserTrafficResetStrategy').value,
+            expiration_date: getDateTimeValue('editUserExpiration', 'editUserExpirationTime'),
+            password: document.getElementById('editUserPass').value || null
+        };
+
+        btn.disabled = true;
+        text.textContent = _('saving');
+        spinner.classList.remove('hidden');
+
+        try {
+            await apiCall(`/api/users/${uid}/update`, 'POST', payload);
+            showToast(_('success'), 'success');
+            closeModal('editUserModal');
+            refreshUsersList();
+        } catch (err) {
+            showToast(`${_('error')}: ` + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            text.textContent = _('save');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function openShareModal(dataset) {
+        currentSharedUser = dataset.id;
+        document.getElementById('shareModalTitle').textContent = `${_('share_access')} — ${dataset.username}`;
+        document.getElementById('shareEnabled').checked = dataset.enabled === 'true';
+        document.getElementById('sharePassword').value = '';
+
+        let token = dataset.token;
+        if (!token || token === '') {
+            token = Math.random().toString(36).substring(2, 15);
+        }
+        const link = window.location.origin + '/share/' + token;
+        document.getElementById('shareLink').value = link;
+
+        updateShareSetup();
+        openModal('shareUserModal');
+    }
+
+    function updateShareSetup() {
+        const enabled = document.getElementById('shareEnabled').checked;
+        document.getElementById('shareSetupFields').style.display = enabled ? '' : 'none';
+    }
+
+    async function saveShareSetup() {
+        const btn = document.getElementById('saveShareBtn');
+        const text = document.getElementById('saveShareBtnText');
+        const spinner = document.getElementById('saveShareSpinner');
+
+        btn.disabled = true;
+        text.textContent = _('saving');
+        spinner.classList.remove('hidden');
+
+        try {
+            const body = {
+                enabled: document.getElementById('shareEnabled').checked,
+                password: document.getElementById('sharePassword').value
+            };
+            const result = await apiCall(`/api/users/${currentSharedUser}/share/setup`, 'POST', body);
+            if (result.share_token) {
+                const link = window.location.origin + '/share/' + result.share_token;
+                document.getElementById('shareLink').value = link;
+            }
+            showToast(_('success'), 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            text.textContent = _('save');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function copyShareLink() {
+        const input = document.getElementById('shareLink');
+        if (!input.value) return;
+        input.select();
+        document.execCommand('copy');
+        showToast(_('copied'), 'success');
+    }
+</script>
+
+{% endblock %}

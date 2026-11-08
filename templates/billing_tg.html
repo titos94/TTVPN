@@ -1,0 +1,138 @@
+{% extends "billing_base.html" %}
+{% block title %}Вход через Telegram{% endblock %}
+{% block content %}
+<div class="bc-card bc-center" style="max-width:430px;margin:0 auto;">
+    <div class="bc-hero" style="padding-top:0;">
+        {% if brand.ready %}
+        <a href="{{ landing_url }}"><img src="{{ brand.logo_url }}" alt="{{ site_settings.title or 'TTVPN' }}"></a>
+        {% endif %}
+        <h1>Вход через Telegram</h1>
+    </div>
+
+    <p class="bc-muted" style="margin:0 0 16px;">
+        Нажмите «Открыть Telegram», затем <b>«Старт»</b> в боте и вернитесь
+        в эту вкладку. Отдельная ссылка или код в сообщении не нужны.
+    </p>
+
+    <a class="bc-btn bc-tgbtn" id="openBtn" href="{{ link }}" target="_blank"
+       rel="noopener noreferrer">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M21.9 4.3 18.7 19c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.3 12.2 1.5 10.7c-1-.3-1-1 .2-1.5l19-7.3c.9-.3 1.6.2 1.2 2.4Z"/>
+        </svg>
+        Открыть Telegram
+    </a>
+
+    <div class="bc-status" id="status" style="margin-top:18px;" aria-live="polite">
+        <span class="bc-spinner" aria-hidden="true"></span>
+        <span id="statusText">Ждём подтверждения в боте…</span>
+    </div>
+    <p class="bc-hint" id="hint">
+        Ссылка действует <b id="ttl">{{ ttl }}</b> мин. Не закрывайте эту вкладку,
+        пока не подтвердите вход в боте.
+    </p>
+
+    <div class="bc-error" id="err" role="alert" aria-live="polite" style="margin-top:14px;"></div>
+    <div class="bc-ok" id="ok" aria-live="polite" style="margin-top:14px;"></div>
+
+    <div class="bc-sep"></div>
+    <div class="bc-muted" style="font-size:.85rem;">
+        Не открывается Telegram?
+        <a href="/cabinet/login{% if next_url and next_url != '/cabinet' %}?next={{ next_url | urlencode }}{% endif %}">Войти по почте</a>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    const TOKEN = {{ token | tojson }};
+    const NEXT = {{ (next_url or '') | tojson }};
+    const TTL_MINUTES = {{ ttl | int }};
+    let left = TTL_MINUTES * 60;
+    let done = false;
+    let errors = 0;
+
+    const statusBox = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const err = document.getElementById('err');
+    const ok = document.getElementById('ok');
+
+    function stopped(text, cls) {
+        done = true;
+        statusBox.style.display = 'none';
+        err.classList.remove('show');
+        ok.classList.remove('show');
+        if (cls === 'ok') {
+            ok.textContent = text;
+            ok.classList.add('show');
+        } else {
+            err.textContent = text;
+            err.classList.add('show');
+        }
+    }
+
+    function tick() {
+        left -= 1;
+        const ttl = document.getElementById('ttl');
+        if (left <= 0) {
+            if (ttl) ttl.textContent = '0';
+            stopped('Ссылка истекла. Начните вход заново.', 'err');
+            return;
+        }
+        if (ttl) ttl.textContent = Math.ceil(left / 60);
+    }
+
+    async function poll() {
+        if (done || document.hidden) return;
+        try {
+            const res = await fetch('/api/billing/telegram/poll/' + encodeURIComponent(TOKEN), {
+                credentials: 'same-origin', cache: 'no-store'
+            });
+            if (res.status === 410) {
+                stopped('Ссылка истекла. Начните вход заново.', 'err');
+                return;
+            }
+            if (res.status === 403) {
+                stopped('Эта вкладка устарела — откройте вход через Telegram заново.', 'err');
+                return;
+            }
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            errors = 0;
+            if (data.status === 'ok') {
+                done = true;
+                statusText.textContent = 'Готово! Открываем кабинет…';
+                window.location.href = data.redirect || NEXT || '/cabinet';
+                return;
+            }
+            if (data.status === 'expired') {
+                stopped('Ссылка истекла. Начните вход заново.', 'err');
+                return;
+            }
+            if (data.status === 'error') {
+                stopped(data.error || 'Не удалось войти. Попробуйте ещё раз.', 'err');
+                return;
+            }
+            statusText.textContent = 'Ждём подтверждения в боте…';
+        } catch (e) {
+            errors += 1;
+            if (errors >= 6) {
+                statusText.textContent = 'Нет связи с сервером — проверьте интернет';
+            }
+        }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        // Telegram suspends timers while it is in the foreground; check at once
+        // when the user comes back to the browser.
+        if (!document.hidden) poll();
+    });
+    document.getElementById('openBtn').addEventListener('click', function () {
+        if (statusBox.style.display !== 'none') {
+            statusText.textContent = 'Нажмите «Старт» в боте…';
+        }
+    });
+
+    setInterval(tick, 1000);
+    setInterval(poll, 2500);
+    poll();
+</script>
+{% endblock %}

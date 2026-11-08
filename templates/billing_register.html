@@ -1,0 +1,218 @@
+{% extends "billing_base.html" %}
+{% block title %}Регистрация{% endblock %}
+{% block content %}
+<div class="bc-card" style="max-width:430px;margin:0 auto;">
+    <div class="bc-hero" style="padding-top:0;">
+        {% if brand.ready %}
+        <a href="{{ landing_url }}"><img src="{{ brand.logo_url }}" alt="{{ site_settings.title or 'TTVPN' }}"></a>
+        {% endif %}
+        <h1>Создать аккаунт</h1>
+    </div>
+    <p class="bc-muted bc-center" style="margin:0 0 18px;">
+        {% if trial_public %}
+        Регистрация бесплатна. Пробный период — {{ trial_days }} дн., карта не нужна.
+        {% else %}
+        Почта и пароль — и кабинет готов.
+        {% endif %}
+    </p>
+    <div class="bc-error" id="err" role="alert" aria-live="polite"></div>
+    <div class="bc-ok" id="ok" aria-live="polite"></div>
+
+    <form id="stepEmail" onsubmit="return submitEmail(event)">
+        <div class="bc-field">
+            <label for="email">Почта</label>
+            <input class="bc-input" type="email" id="email" name="email" autocomplete="email"
+                   inputmode="email" spellcheck="false" required autofocus>
+        </div>
+        <div class="bc-field">
+            <label for="password">Пароль (минимум 8 символов)</label>
+            <input class="bc-input" type="password" id="password" name="password"
+                   autocomplete="new-password" minlength="8" required>
+            <p class="bc-hint" style="margin:6px 0 0;">Пароль понадобится для входа в кабинет.</p>
+        </div>
+        <button class="bc-btn" type="submit" id="submitBtn" style="width:100%;">Зарегистрироваться</button>
+    </form>
+
+    <form id="stepCode" onsubmit="return submitCode(event)" style="display:none;">
+        <p class="bc-muted" style="margin-top:0;">
+            Мы отправили код на <b id="codeEmail" style="overflow-wrap:anywhere;"></b>.
+            Он действует <span id="codeTtl">10</span> мин.
+        </p>
+        <div class="bc-field">
+            <label for="code">Код из письма</label>
+            <input class="bc-input" type="text" id="code" name="code" inputmode="numeric"
+                   pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required
+                   style="letter-spacing:8px;font-size:1.3rem;text-align:center;">
+        </div>
+        <button class="bc-btn" type="submit" id="verifyBtn" style="width:100%;">Подтвердить</button>
+        <div class="bc-sep"></div>
+        <div class="bc-muted bc-center">
+            Письмо не пришло?
+            <button class="bc-link" type="button" id="resendBtn" onclick="resendCode()">Отправить снова</button>
+        </div>
+        <div class="bc-muted bc-center" style="margin-top:8px;font-size:.82rem;">
+            <button class="bc-link" type="button" onclick="showStep('email')">Изменить почту</button>
+        </div>
+    </form>
+
+    {% if tg_ready %}
+    <div id="tgBlock">
+        <div class="bc-sep"></div>
+        <a class="bc-btn bc-tgbtn"
+           href="/cabinet/tg?next={{ next_url | urlencode }}{% if promo_code %}&promo={{ promo_code | urlencode }}{% endif %}"
+           rel="noopener">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                <path d="M21.9 4.3 18.7 19c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.3 12.2 1.5 10.7c-1-.3-1-1 .2-1.5l19-7.3c.9-.3 1.6.2 1.2 2.4Z"/>
+            </svg>
+            Создать аккаунт через Telegram
+        </a>
+        <p class="bc-muted bc-center" style="margin:8px 0 0;font-size:.78rem;">
+            Без почты: бот подтвердит вход, кабинет откроется сам.
+        </p>
+    </div>
+    {% endif %}
+
+    <div class="bc-sep"></div>
+    <div class="bc-muted bc-center">Уже есть аккаунт?
+        <a href="/cabinet/login{% if next_url and next_url != '/cabinet' %}?next={{ next_url | urlencode }}{% if promo_code %}&promo={{ promo_code | urlencode }}{% endif %}{% elif promo_code %}?promo={{ promo_code | urlencode }}{% endif %}">Войти</a>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    let pendingEmail = '';
+    let resendTimer = null;
+    const NEXT_URL = {{ next_url | tojson }};
+    const PROMO = {{ promo_code | tojson }};
+
+    function setBusy(btn, busy, label) {
+        if (!btn) return;
+        if (busy) {
+            if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
+            btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
+            if (label) btn.textContent = label;
+            return;
+        }
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        if (btn.dataset.idleLabel) {
+            btn.textContent = btn.dataset.idleLabel;
+            delete btn.dataset.idleLabel;
+        }
+    }
+
+    function goNext(fallback) {
+        let target = NEXT_URL && NEXT_URL !== '/cabinet' ? NEXT_URL : (fallback || '/cabinet');
+        if (PROMO && target.indexOf('/plans') === 0 && target.indexOf('promo=') === -1) {
+            target += (target.indexOf('?') === -1 ? '?' : '&') + 'promo=' + encodeURIComponent(PROMO);
+        }
+        window.location.href = target;
+    }
+
+    function showStep(step) {
+        document.getElementById('stepEmail').style.display = step === 'email' ? '' : 'none';
+        document.getElementById('stepCode').style.display = step === 'code' ? '' : 'none';
+        const tg = document.getElementById('tgBlock');
+        if (tg) tg.style.display = step === 'email' ? '' : 'none';
+        const email = document.getElementById('email');
+        if (step === 'email' && email) email.focus();
+    }
+
+    function startResendCooldown(seconds) {
+        const btn = document.getElementById('resendBtn');
+        if (!seconds || seconds <= 0) { btn.disabled = false; btn.textContent = 'Отправить снова'; return; }
+        let left = seconds;
+        btn.disabled = true;
+        btn.textContent = 'Отправить снова (' + left + ')';
+        if (resendTimer) clearInterval(resendTimer);
+        resendTimer = setInterval(() => {
+            left -= 1;
+            if (left <= 0) {
+                clearInterval(resendTimer);
+                resendTimer = null;
+                btn.disabled = false;
+                btn.textContent = 'Отправить снова';
+            } else {
+                btn.textContent = 'Отправить снова (' + left + ')';
+            }
+        }, 1000);
+    }
+
+    async function submitEmail(ev) {
+        ev.preventDefault();
+        const err = document.getElementById('err');
+        const ok = document.getElementById('ok');
+        const btn = document.getElementById('submitBtn');
+        err.classList.remove('show');
+        ok.classList.remove('show');
+        setBusy(btn, true, 'Создаём аккаунт…');
+        try {
+            const data = await bcPost('/api/billing/register', {
+                email: document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value
+            });
+            if (data.status === 'verify') {
+                pendingEmail = data.email;
+                document.getElementById('codeEmail').textContent = data.email;
+                document.getElementById('codeTtl').textContent = data.ttl_minutes || 10;
+                setBusy(btn, false);
+                showStep('code');
+                document.getElementById('code').focus();
+                startResendCooldown(data.resend_after || 60);
+            } else {
+                goNext(data.redirect || '/plans');
+            }
+        } catch (e) {
+            setBusy(btn, false);
+            bcShowError(err, e.message);
+        }
+        return false;
+    }
+
+    async function submitCode(ev) {
+        ev.preventDefault();
+        const err = document.getElementById('err');
+        const btn = document.getElementById('verifyBtn');
+        err.classList.remove('show');
+        setBusy(btn, true, 'Проверяем код…');
+        try {
+            const data = await bcPost('/api/billing/register/verify', {
+                email: pendingEmail,
+                code: document.getElementById('code').value.trim()
+            });
+            goNext(data.redirect || '/plans');
+        } catch (e) {
+            setBusy(btn, false);
+            bcShowError(err, e.message);
+            document.getElementById('code').select();
+        }
+        return false;
+    }
+
+    async function resendCode() {
+        const err = document.getElementById('err');
+        const ok = document.getElementById('ok');
+        const btn = document.getElementById('resendBtn');
+        err.classList.remove('show');
+        ok.classList.remove('show');
+        btn.disabled = true;
+        btn.textContent = 'Отправляем…';
+        try {
+            const data = await bcPost('/api/billing/register/resend', { email: pendingEmail });
+            ok.textContent = 'Код отправлен повторно.';
+            ok.classList.add('show');
+            startResendCooldown(60);
+        } catch (e) {
+            const match = /через (\d+)/.exec(e.message);
+            if (match) {
+                startResendCooldown(parseInt(match[1], 10));
+            } else {
+                btn.disabled = false;
+                btn.textContent = 'Отправить снова';
+            }
+            bcShowError(err, e.message);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang=='fa' %}dir="rtl" {% endif %}>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="{{ _('site_description') }}">
+    <meta name="theme-color" content="#0a0a0f" id="metaThemeColor">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="{{ site_settings.title or 'Amnezia' }}">
+    <title>{{ site_settings.title or 'Amnezia Panel' }} {% block title_extra %}{% endblock %}</title>
+    {% if brand is defined and brand.ready %}
+    <link rel="icon" href="{{ brand.icon_url }}">
+    <link rel="apple-touch-icon" href="{{ brand.icon_url }}">
+    {% else %}
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
+    {% endif %}
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
+    <link rel="stylesheet" href="/static/css/ttvpn-ui.css?v={{ static_v }}">
+    <script>!function () { var t = localStorage.getItem('theme') || 'dark'; document.documentElement.setAttribute('data-theme', t); var m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'light' ? '#f5f5f7' : '#0a0a0f'; }()</script>
+    <script src="/static/js/qrcode.min.js"></script>
+    <script src="/static/js/searchable-select.js" defer></script>
+    <script src="/static/js/peer-queue.js" defer></script>
+    {% block head_extra %}{% endblock %}
+    <style>
+        .lang-check {
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        [dir="rtl"] .lang-check {
+            margin-right: auto;
+        }
+
+        [dir="ltr"] .lang-check {
+            margin-left: auto;
+        }
+
+        /* Переход к содержимому: виден только при фокусе с клавиатуры. */
+        .tt-skip-link {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            z-index: 2000;
+            padding: 10px 16px;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            transform: translateY(-200%);
+            transition: transform 0.15s ease;
+        }
+
+        .tt-skip-link:focus,
+        .tt-skip-link:focus-visible {
+            transform: translateY(0);
+        }
+
+        [dir="rtl"] .tt-skip-link {
+            right: 8px;
+            left: auto;
+        }
+
+        /* Нижний таббар: 60px + safe-area, подписи переносятся, а не обрезаются. */
+        .mobile-tabbar {
+            min-height: calc(60px + env(safe-area-inset-bottom, 0px));
+            padding-top: 6px;
+            padding-right: max(6px, env(safe-area-inset-right, 0px));
+            padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+            padding-left: max(6px, env(safe-area-inset-left, 0px));
+        }
+
+        .mobile-tabbar .tab-item {
+            min-height: 0;
+            padding: 2px;
+            gap: 2px;
+            font-size: 0.62rem;
+        }
+
+        .mobile-tabbar .tab-icon {
+            height: 22px;
+            font-size: 1rem;
+        }
+
+        .mobile-tabbar .tab-label {
+            max-width: 100%;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: normal;
+            overflow-wrap: break-word;
+            hyphens: auto;
+            line-height: 1.1;
+            text-align: center;
+        }
+
+        @media (max-width: 380px) {
+            .mobile-tabbar .tab-item {
+                font-size: 0.56rem;
+            }
+        }
+
+        /* Кнопка сворачивания нужна и в развёрнутом состоянии. На телефоне
+           сайдбар и так скрыт, поэтому там она не показывается. */
+        @media (min-width: 901px) {
+            .tt-sidebar-toggle {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+
+        .tt-nav-group__row { display:flex; align-items:center; border-radius:var(--radius-md); }
+        .tt-nav-group__row .tt-nav-link { flex:1; min-width:0; }
+        .tt-nav-group__row:has([aria-current]) { background:var(--accent-surface); }
+        .tt-nav-group__toggle { flex:none; width:38px; height:42px; border:0; border-radius:var(--radius-md); background:transparent; color:var(--text-primary); cursor:pointer; }
+        .tt-nav-group__toggle svg { transition:transform .15s ease; }
+        .tt-nav-group__toggle[aria-expanded="true"] svg { transform:rotate(90deg); }
+        .tt-nav-group__menu { padding:4px 0 8px 24px; }
+        .tt-nav-group__menu[hidden] { display:none; }
+        .tt-nav-group__menu a { display:block; padding:8px 10px; border-radius:var(--radius-md); color:var(--text-primary); font-size:13px; line-height:1.3; overflow-wrap:anywhere; }
+        .tt-nav-group__menu a:hover, .tt-nav-group__menu a[aria-current] { background:var(--accent-surface); color:var(--accent-light); }
+        .tt-mobile-menu { display:none; }
+        @media (min-width:1024px) {
+            .tt-shell--collapsed .tt-nav-group__row { flex-wrap:wrap; justify-content:center; }
+            .tt-shell--collapsed .tt-nav-group__row .tt-nav-link { flex:0 0 100%; }
+            .tt-shell--collapsed .tt-nav-group__menu { padding:0; }
+            .tt-shell--collapsed .tt-nav-group__menu a { font-size:11px; padding:6px 2px; overflow-wrap:anywhere; }
+        }
+        @media (max-width:1023px) {
+            .tt-mobile-menu { display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border:0; border-radius:var(--radius-md); background:transparent; color:var(--text-primary); cursor:pointer; }
+            .tt-sidebar, .tt-shell--collapsed .tt-sidebar { position:fixed; inset:0 auto 0 0; z-index:100; width:min(300px, 85vw); height:100dvh; padding:24px 16px; display:flex; overflow-y:auto; background:var(--bg-secondary); border-right:1px solid var(--border-color); transform:translateX(-105%); transition:transform .2s ease; box-shadow:0 0 0 100vmax transparent; }
+            .tt-shell.tt-drawer-open .tt-sidebar { transform:translateX(0); box-shadow:0 0 0 100vmax rgba(0,0,0,.5); }
+            .tt-sidebar-label, .tt-sidebar .tt-nav, .tt-sidebar-bottom, .tt-shell--collapsed .tt-sidebar-label, .tt-shell--collapsed .tt-brand-text, .tt-shell--collapsed .tt-sidebar-user, .tt-shell--collapsed .tt-sidebar-note { display:block; }
+            .tt-sidebar .tt-nav { display:grid; }
+            .tt-shell--collapsed .tt-nav { margin-top:0; }
+            .tt-shell--collapsed .tt-nav-link { justify-content:flex-start; gap:12px; font-size:14px; padding:9px 12px; }
+            .tt-shell--collapsed .tt-brand { justify-content:flex-start; }
+            .tt-workspace, .tt-shell--collapsed .tt-workspace { width:auto; margin-left:0; min-width:0; }
+            .tt-sidebar-toggle { display:none !important; }
+            .tt-content { min-width:0; }
+        }
+    </style>
+</head>
+
+<body>
+    <a class="tt-skip-link" href="#ttMain">Перейти к содержимому</a>
+    <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
+
+    {% set path = request.url.path if request else '/' %}
+    {% set page_titles = {
+        '/': _('nav_servers'),
+        '/users': _('nav_users'),
+        '/settings': _('nav_settings'),
+        '/billing-admin': _('nav_billing'),
+        '/system-status': 'Состояние',
+        '/my': _('nav_connections'),
+        '/overview-preview': 'Обзор'
+    } %}
+    {% set page_title = page_titles.get(path) or (_('nav_servers') if path.startswith('/server') else _('nav_settings')) %}
+    {# Активный раздел: одна и та же вычисленная метка используется и в
+       сайдбаре, и в нижнем таббаре, чтобы aria-current не расходился. #}
+    {% set nav_section = 'servers' if (path == '/' or path.startswith('/server'))
+        else 'users' if path == '/users'
+        else 'billing' if path == '/billing-admin'
+        else 'status' if path == '/system-status'
+        else 'settings' if path == '/settings'
+        else 'connections' if (path == '/my' or path.startswith('/my/'))
+        else '' %}
+    {# The chrome lives in one overridable block: child pages normally keep the
+       shared shell, while a page that owns its own layout can replace it. #}
+    {% block body_shell %}
+    <div class="tt-shell" id="ttShell">
+        <aside class="tt-sidebar" id="ttSidebar" aria-label="Боковая панель">
+            <a href="/" class="tt-brand" style="text-decoration:none"
+                aria-label="{{ site_settings.title or 'TTVPN' }}">
+                {% if brand is defined and brand.ready %}
+                <img class="tt-brand-logo" src="{{ brand.logo_url }}" alt="" aria-hidden="true">
+                {% else %}
+                <div class="logo-icon" aria-hidden="true">{% if site_settings.logo %}{{ site_settings.logo }}{% else %}<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.4 3.2 8.2 7.5 9.5 4.3-1.3 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>{% endif %}</div>
+                {% endif %}
+                <div class="tt-brand-text">
+                    <div class="logo-text">{{ site_settings.title }}</div>
+                    <div class="logo-subtitle">{{ site_settings.subtitle }}</div>
+                </div>
+            </a>
+
+            <div class="tt-sidebar-label" id="ttSidebarLabel">{{ _('nav_servers') if not current_user else 'Панель управления' }}</div>
+            <nav class="tt-nav" aria-label="Основная навигация" aria-labelledby="ttSidebarLabel">
+                {% if current_user %}
+                {% if current_user.role in ['admin', 'support'] %}
+                <a href="/" class="tt-nav-link" {% if nav_section == 'servers' %}aria-current="page" {% endif %}><span aria-hidden="true"><svg class="tt-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span class="tt-nav-text">{{ _('nav_servers') }}</span></a>
+                <a href="/users" class="tt-nav-link" {% if nav_section == 'users' %}aria-current="page" {% endif %}><span aria-hidden="true"><svg class="tt-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M16 5.5a3 3 0 0 1 0 5.6M17.5 14c2 .6 3.5 2.4 3.5 5"/></svg></span><span class="tt-nav-text">{{ _('nav_users') }}</span></a>
+                {% endif %}
+                {% if current_user.role == 'admin' %}
+                <div class="tt-nav-group" data-nav-group>
+                    <div class="tt-nav-group__row">
+                        <a href="/billing-admin" class="tt-nav-link" {% if nav_section == 'billing' %}aria-current="page" {% endif %}><span aria-hidden="true"><svg class="tt-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg></span><span class="tt-nav-text">{{ _('nav_billing') }}</span></a>
+                        <button class="tt-nav-group__toggle" type="button" aria-label="Разделы: Биллинг" aria-expanded="false" aria-controls="ttNavbilling"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+                    </div>
+                    <div class="tt-nav-group__menu" id="ttNavbilling" role="menu" aria-label="Биллинг" hidden>
+                        <a role="menuitem" href="/billing-admin#plans">Тарифы</a>
+                        <a role="menuitem" href="/billing-admin#promos">Промокоды</a>
+                        <a role="menuitem" href="/billing-admin#payments">Платежи</a>
+                        <a role="menuitem" href="/billing-admin#trial">Пробный период</a>
+                        <a role="menuitem" href="/settings#kassa">Настройки оплаты</a>
+                    </div>
+                </div>
+                <a href="/system-status" class="tt-nav-link" {% if nav_section == 'status' %}aria-current="page" {% endif %}><span aria-hidden="true"><svg class="tt-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-7 4 14L16 12h5"/></svg></span><span class="tt-nav-text">Состояние</span></a>
+                <div class="tt-nav-group" data-nav-group>
+                    <div class="tt-nav-group__row">
+                        <a href="/settings" class="tt-nav-link" {% if nav_section == 'settings' %}aria-current="page" {% endif %}><span aria-hidden="true"><svg class="tt-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6h.09A1.7 1.7 0 0 0 10.1 3V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></span><span class="tt-nav-text">{{ _('nav_settings') }}</span></a>
+                        <button class="tt-nav-group__toggle" type="button" aria-label="Разделы: Настройки" aria-expanded="false" aria-controls="ttNavsettings"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+                    </div>
+                    <div class="tt-nav-group__menu" id="ttNavsettings" role="menu" aria-label="Настройки" hidden>
+                        <a role="menuitem" href="/settings#settings-appearance">Внешний вид</a>
+                        <a role="menuitem" href="/settings#settings-ssl">SSL</a>
+                        <a role="menuitem" href="/settings#settings-cert-domains">Домены и сертификаты</a>
+                        <a role="menuitem" href="/settings#settings-mail">Почта</a>
+                        <a role="menuitem" href="/settings#settings-telegram">Telegram-бот</a>
+                        <a role="menuitem" href="/settings#settings-api">Документация API</a>
+                        <a role="menuitem" href="/settings#settings-tokens">API-токены</a>
+                        <a role="menuitem" href="/settings#settings-captcha">Капча</a>
+                        <a role="menuitem" href="/settings#settings-backup">Резервные копии</a>
+                        <a role="menuitem" href="/settings#settings-import">Импорт пользователей</a>
+                        <a role="menuitem" href="/settings#settings-exit-nodes">Выходные ноды</a>
+                        <a role="menuitem" href="/settings#settings-tunnels">Туннели</a>
+                        <a role="menuitem" href="/settings#settings-self-service">Самообслуживание</a>
+                        <a role="menuitem" href="/settings#settings-assistant">ИИ-помощник</a>
+                        <a role="menuitem" href="/settings#settings-about">О программе</a>
+                    </div>
+                </div>
+                {% endif %}
+                <a href="/my" class="tt-nav-link" {% if nav_section == 'connections' %}aria-current="page" {% endif %}><span aria-hidden="true"><svg class="tt-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></span><span class="tt-nav-text">{{ _('nav_connections') }}</span></a>
+                {% endif %}
+            </nav>
+
+            <div class="tt-sidebar-bottom">
+                {% if current_user %}
+                <div class="tt-sidebar-user">
+                    <strong title="{{ current_user.username }}">{{ current_user.username }}</strong>
+                    <span class="badge badge-{{ 'success' if current_user.role == 'admin' else ('info' if current_user.role == 'support' else 'warn') }}"
+                        >{{ 'Администратор' if current_user.role == 'admin' else ('Поддержка' if current_user.role == 'support' else 'Пользователь') }}</span>
+                </div>
+                {% endif %}
+                <div class="tt-sidebar-actions">
+                    {% if current_user %}
+                    <a href="/logout" class="tt-nav-link nav-logout" title="{{ _('nav_logout') }}">
+                        <span aria-hidden="true">
+                            <svg class="nav-logout-icon" width="17" height="17" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                aria-hidden="true">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                <polyline points="16 17 21 12 16 7" />
+                                <line x1="21" y1="12" x2="9" y2="12" />
+                            </svg>
+                        </span><span class="tt-nav-text">{{ _('nav_logout') }}</span>
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="tt-sidebar-note">{{ site_settings.title }} / {{ _('nav_servers') if not current_user else 'Панель управления' }}</div>
+            </div>
+        </aside>
+
+        <div class="tt-workspace">
+            <header class="tt-topbar">
+                <div class="tt-topbar-left">
+                    <button class="tt-mobile-menu" type="button" aria-label="Открыть меню" aria-controls="ttSidebar" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+                    <button class="tt-sidebar-toggle" type="button" aria-label="Компактная боковая панель"
+                        aria-pressed="false" id="ttSidebarToggle">☰</button>
+                    <span class="tt-topbar-caption">{{ 'Панель управления' if current_user else site_settings.title }}</span>
+                    <span class="tt-topbar-divider">/</span>
+                    <strong class="tt-topbar-title">{{ page_title }}</strong>
+                </div>
+                <div class="tt-topbar-right">
+                    <button class="tt-icon-button" onclick="openModal('langModal')" title="{{ _('select_lang') }}"
+                        aria-label="{{ _('select_lang') }}">
+                        {% if lang == 'ru' %}🇷🇺{% elif lang == 'fr' %}🇫🇷{% elif lang == 'zh' %}🇨🇳{% elif lang == 'fa'
+                        %}🇮🇷{% else %}🇺🇸{% endif %}
+                    </button>
+                    <button class="tt-icon-button" onclick="toggleTheme()" title="{{ _('toggle_theme') }}"
+                        aria-label="{{ _('toggle_theme') }}" id="themeToggle"><svg class="tt-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg></button>
+                </div>
+            </header>
+
+            <main class="tt-content {% block page_class %}{% endblock %}">
+                {% if current_user and current_user.role == 'admin' %}
+                <div id="assistantMonitorAlert" class="tt-alert tt-alert--danger hidden" role="status" aria-live="polite"></div>
+                {% endif %}
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    {% if current_user %}
+    {% set show_ops = current_user.role in ['admin', 'support'] %}
+    {% set show_settings = current_user.role == 'admin' %}
+    {% set tab_count = 1 + (2 if show_ops else 0) + (3 if show_settings else 0) %}
+    {% if tab_count >= 2 %}
+    <nav class="mobile-tabbar" aria-label="Primary">
+        {% if show_ops %}
+        <a href="/" class="tab-item">
+            <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+            <span class="tab-label">{{ _('nav_servers') }}</span>
+        </a>
+        <a href="/users" class="tab-item">
+            <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+            <span class="tab-label">{{ _('nav_users') }}</span>
+        </a>
+        {% endif %}
+        {% if show_settings %}
+        <a href="/billing-admin" class="tab-item">
+            <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
+            <span class="tab-label">{{ _('nav_billing') }}</span>
+        </a>
+        <a href="/system-status" class="tab-item" {% if nav_section == 'status' %}aria-current="page" {% endif %}>
+            <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-7 4 14L16 12h5"/></svg></span>
+            <span class="tab-label">Состояние</span>
+        </a>
+        <a href="/settings" class="tab-item">
+            <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+            <span class="tab-label">{{ _('nav_settings') }}</span>
+        </a>
+        {% endif %}
+        <a href="/my" class="tab-item">
+            <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+            <span class="tab-label">{{ _('nav_connections') }}</span>
+        </a>
+    </nav>
+    {% endif %}
+    {% endif %}
+    {% endblock %}
+
+    <!-- ===== Language Modal ===== -->
+    <div class="modal-backdrop" id="langModal">
+        <div class="modal" style="max-width: 320px;">
+            <div class="modal-header">
+                <h2 class="modal-title">{{ _('select_lang') }}</h2>
+                <button class="modal-close" onclick="closeModal('langModal')">×</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                {% set langs = [
+                ('en', '🇺🇸', 'lang_en'),
+                ('ru', '🇷🇺', 'lang_ru'),
+                ('fr', '🇫🇷', 'lang_fr'),
+                ('zh', '🇨🇳', 'lang_zh'),
+                ('fa', '🇮🇷', 'lang_fa')
+                ] %}
+                {% for l_code, l_flag, l_key in langs %}
+                <a href="/set_lang/{{ l_code }}" class="btn btn-secondary"
+                    style="justify-content: flex-start; gap: var(--space-md); padding: var(--space-md);">
+                    <span style="font-size: 1.4rem;">{{ l_flag }}</span>
+                    <span style="font-weight: 500;">{{ _(l_key) }}</span>
+                    {% if lang == l_code %}
+                    <span class="lang-check">✓</span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.I18N = {{ translations_json | safe }};
+        window._ = function (key) { return window.I18N[key] || key; };
+
+        /* Shared stroke icons for JS-rendered buttons (matches logout SVG style) */
+        window.ICON_PENCIL = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+        window.ICON_TRASH = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+        window.ICON_SERVERS = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="12" rx="2"/><line x1="7" y1="21" x2="17" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+        window.ICON_USERS = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+        window.ICON_SETTINGS = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>';
+        window.ICON_LINK = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+        window.ICON_FILE = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        window.ICON_PLUS = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+        window.ICON_POWER = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>';
+        window.ICON_SHARE = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+        window.ICON_LOCK = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+        window.ICON_GLOBE = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+        window.ICON_KEY = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>';
+        window.ICON_INFO = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+        window.ICON_REFRESH = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+        window.ICON_COPY = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        window.ICON_DOWNLOAD = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+        window.ICON_UPLOAD = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+        window.ICON_DOCS = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+        window.ICON_CHECK = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+        window.ICON_MAIL = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>';
+        window.ICON_X = '<svg class="btn-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        window.ICON_CALENDAR = '<svg class="btn-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+        window.ICON_CHAT = '<svg class="btn-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg>';
+        window.ICON_CLOCK = '<svg class="btn-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+
+        /* ===== Theme Toggle ===== */
+        (function () {
+            const saved = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', saved);
+
+            const updateUI = () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                document.querySelectorAll('.theme-toggle').forEach(btn => {
+                    const isLang = btn.getAttribute('onclick').includes('langModal');
+                    if (!isLang) {
+                        const THEME_SUN = '<svg class="tt-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+                    const THEME_MOON = '<svg class="tt-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>';
+                    btn.innerHTML = isLight ? THEME_SUN : THEME_MOON;
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateUI);
+            } else {
+                updateUI();
+            }
+
+            window.toggleTheme = function () {
+                const current = document.documentElement.getAttribute('data-theme') || 'dark';
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                const meta = document.getElementById('metaThemeColor') || document.querySelector('meta[name="theme-color"]');
+                if (meta) meta.content = next === 'light' ? '#f5f5f7' : '#0a0a0f';
+                updateUI();
+            };
+        })();
+
+        /* ===== Active Nav Link ===== */
+        (function () {
+            const path = window.location.pathname;
+            document.querySelectorAll('.nav-link, .tab-item, .tt-nav-link').forEach(link => {
+                const href = link.getAttribute('href');
+                if (href === '/' && path === '/') link.classList.add('active');
+                else if (href !== '/' && path.startsWith(href)) link.classList.add('active');
+            });
+        })();
+
+        /* ===== Collapsible sidebar (same behaviour as the overview page) ===== */
+        (function () {
+            const shell = document.getElementById('ttShell');
+            const toggle = document.getElementById('ttSidebarToggle');
+            if (!shell || !toggle) return;
+            const setCollapsed = (collapsed) => {
+                shell.classList.toggle('tt-shell--collapsed', collapsed);
+                toggle.setAttribute('aria-pressed', String(collapsed));
+            };
+            try { setCollapsed(localStorage.getItem('tt-sidebar-collapsed') === '1'); } catch (_) { }
+            toggle.addEventListener('click', () => {
+                const collapsed = !shell.classList.contains('tt-shell--collapsed');
+                setCollapsed(collapsed);
+                try { localStorage.setItem('tt-sidebar-collapsed', collapsed ? '1' : '0'); } catch (_) { }
+            });
+        })();
+
+        /* ===== Shared QR size helper (modal width - padding) ===== */
+        window.qrSize = (el, max = 280) => Math.min(max, (el.clientWidth || max) - 8);
+
+        /* ===== Service Worker (static assets only) ===== */
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js?v={{ static_v }}').catch(() => {});
+        }
+
+        /* The assistant monitor reports bounded status codes, never raw logs. */
+        async function updateAssistantMonitor() {
+            const alert = document.getElementById('assistantMonitorAlert');
+            if (!alert) return;
+            try {
+                const response = await fetch('/api/assistant/monitor', {cache: 'no-store'});
+                if (!response.ok) throw new Error('monitor unavailable');
+                const report = await response.json();
+                if (report.status === 'disabled') {
+                    alert.textContent = 'Мониторинг отключён до настройки изоляции доступа';
+                    alert.classList.remove('hidden');
+                    return;
+                }
+                if (report.status === 'starting') {
+                    alert.textContent = 'Мониторинг запускается';
+                    alert.classList.remove('hidden');
+                    return;
+                }
+                const checkedAt = Date.parse(report.checked_at || '');
+                if (!Number.isFinite(checkedAt) || Date.now() - checkedAt > 180000 || checkedAt - Date.now() > 30000) {
+                    throw new Error('monitor report stale');
+                }
+                const labels = {
+                    disk_space_low: 'На диске осталось менее 10% свободного места',
+                    disk_status_unknown: 'Не удалось проверить свободное место на диске',
+                    telegram_stopped: 'Telegram-бот остановлен',
+                    monitor_error: 'Не удалось проверить состояние сервисов'
+                };
+                const messages = (report.issues || []).map(code => labels[code]).filter(Boolean);
+                alert.textContent = messages.join('. ');
+                alert.classList.toggle('hidden', messages.length === 0);
+            } catch (_) {
+                alert.textContent = 'Не удалось проверить состояние сервисов';
+                alert.classList.remove('hidden');
+            }
+        }
+        if (document.getElementById('assistantMonitorAlert')) {
+            updateAssistantMonitor();
+            setInterval(updateAssistantMonitor, 60000);
+        }
+
+        /* ===== Toast Notifications ===== */
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+
+            const icons = { success: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>', error: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>', info: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>' };
+            toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${message}</span>`;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        /* ===== Modal Management ===== */
+        function openModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
+
+        /* Close modal on backdrop click — but only when BOTH the press and
+           the release happen on the backdrop. Pressing inside the modal
+           (e.g. selecting input text) and releasing outside must not close
+           it, otherwise drag-select closes every modal. */
+        let backdropPressTarget = null;
+        document.addEventListener('mousedown', (e) => {
+            backdropPressTarget = e.target;
+        });
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-backdrop') && e.target.classList.contains('active')
+                && backdropPressTarget === e.target) {
+                e.target.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+            backdropPressTarget = null;
+        });
+
+        /* Close modal on Escape */
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-backdrop.active').forEach(m => {
+                    m.classList.remove('active');
+                });
+                document.body.style.overflow = '';
+            }
+        });
+
+        /* ===== API Helper ===== */
+        async function apiCall(url, method = 'GET', body = null) {
+            const opts = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+            };
+            if (body) opts.body = JSON.stringify(body);
+
+            const res = await fetch(url, opts);
+
+            // A forbidden optional feature is not an expired session. For
+            // example self-service may be disabled or a proxy may deny tunnels.
+            // Keep the page open and let the caller handle that 403 response.
+            if (res.status === 401) {
+                window.location.href = '/login';
+                throw new Error('Session expired');
+            }
+
+            // Not res.json(): a proxy error page, a restart mid-request or a
+            // handler that died before it could answer all arrive as HTML or
+            // plain text, and the parse error alone ("unexpected character at
+            // line 1 column 1") tells the user nothing about what happened.
+            const text = await res.text();
+            let data;
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (parseError) {
+                const detail = (text || res.statusText || '').replace(/<[^>]*>/g, ' ').trim().slice(0, 120);
+                const err = new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+                err.status = res.status;
+                throw err;
+            }
+
+            if (!res.ok) {
+                const err = new Error(data.error || data.detail || `HTTP ${res.status}`);
+                err.status = res.status;
+                err.payload = data;  // keep extra fields (e.g. import log)
+                throw err;
+            }
+            return data;
+        }
+
+        /* ===== Copy to clipboard ===== */
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast(_('copied_to_clipboard'), 'success');
+            } catch {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+                showToast(_('copied_to_clipboard'), 'success');
+            }
+        }
+
+        /* ===== Download file ===== */
+        function downloadFile(content, filename) {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+
+    {% block scripts %}{% endblock %}
+
+    <script>
+    (function () {
+        const shell = document.getElementById('ttShell');
+        const drawer = document.querySelector('.tt-mobile-menu');
+        const sidebar = document.getElementById('ttSidebar');
+        if (!shell || !sidebar) return;
+        const desktop = window.matchMedia('(min-width: 1024px)');
+        const groups = Array.from(sidebar.querySelectorAll('[data-nav-group]'));
+        function setOpen(group, open) {
+            const button = group.querySelector('.tt-nav-group__toggle');
+            button.setAttribute('aria-expanded', String(open));
+            group.querySelector('[role="menu"]').hidden = !open;
+        }
+        function closeGroups(except) { groups.forEach(group => { if (group !== except) setOpen(group, false); }); }
+        groups.forEach(group => {
+            const button = group.querySelector('.tt-nav-group__toggle');
+            button.addEventListener('click', () => {
+                const open = button.getAttribute('aria-expanded') !== 'true';
+                closeGroups(group); setOpen(group, open);
+            });
+            group.querySelectorAll('[role="menuitem"]').forEach(link => link.addEventListener('click', () => { if (!desktop.matches) setDrawer(false); }));
+            group.addEventListener('mouseenter', () => { if (desktop.matches) { closeGroups(group); setOpen(group, true); } });
+            group.addEventListener('mouseleave', () => { if (desktop.matches && !group.contains(document.activeElement)) setOpen(group, false); });
+            group.addEventListener('focusin', event => { if (desktop.matches && event.target !== button) { closeGroups(group); setOpen(group, true); } });
+            group.addEventListener('focusout', event => { if (desktop.matches && !group.contains(event.relatedTarget) && !group.matches(':hover')) setOpen(group, false); });
+        });
+        function markCurrent() {
+            groups.forEach(group => {
+                let active = false;
+                group.querySelectorAll('[role="menuitem"]').forEach(link => {
+                    const current = !!location.hash && link.pathname === location.pathname && link.hash === location.hash;
+                    if (current) { link.setAttribute('aria-current', 'location'); active = true; }
+                    else link.removeAttribute('aria-current');
+                });
+                const parent = group.querySelector('.tt-nav-group__row > a');
+                if (parent.getAttribute('aria-current') !== 'page') {
+                    if (active) parent.setAttribute('aria-current', 'location');
+                    else parent.removeAttribute('aria-current');
+                }
+            });
+        }
+        markCurrent(); window.addEventListener('hashchange', markCurrent);
+        function setDrawer(open) { shell.classList.toggle('tt-drawer-open', open); if (drawer) drawer.setAttribute('aria-expanded', String(open)); if (!open) closeGroups(); }
+        if (drawer) drawer.addEventListener('click', () => setDrawer(!shell.classList.contains('tt-drawer-open')));
+        document.addEventListener('click', event => { if (!desktop.matches && shell.classList.contains('tt-drawer-open') && !sidebar.contains(event.target) && !drawer.contains(event.target)) setDrawer(false); });
+        document.addEventListener('keydown', event => { if (event.key === 'Escape') { const group = document.activeElement.closest('[data-nav-group]'); if (group && group.querySelector('.tt-nav-group__toggle').getAttribute('aria-expanded') === 'true') { setOpen(group, false); group.querySelector('.tt-nav-group__toggle').focus(); event.preventDefault(); } else if (shell.classList.contains('tt-drawer-open')) { setDrawer(false); drawer.focus(); } else closeGroups(); } });
+        window.addEventListener('resize', () => { if (desktop.matches) setDrawer(false); });
+    })();
+    </script>
+</body>
+
+</html>

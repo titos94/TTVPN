@@ -1,0 +1,54 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# PyInstaller folders
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+.mypy_cache/
+
+# User data
+data.json
+data.json.recovery/
+*.runtime.lock
+billing.db
+billing.db-wal
+billing.db-shm
+branding/
+.env
+.env.*
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+.worktrees/
+
+# Docs: каталог в целом игнорируется (временные файлы),
+# но черновики юридических документов должны попадать в репозиторий.
+# Внимание: нельзя писать `docs/` — git не заходит в исключённый каталог,
+# поэтому отрицание внутри него не сработало бы.
+docs/*
+!docs/legal/
+!docs/legal/*.md
