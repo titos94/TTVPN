@@ -8939,6 +8939,40 @@ async def assistant_monitor_status(request: Request):
     return JSONResponse(dict(_assistant_monitor.last_report), headers={'Cache-Control': 'no-store'})
 
 
+_monitor_ai_lock = threading.Lock()
+_monitor_ai_last = 0.0
+
+
+@app.post('/api/assistant/analyze', tags=["System"])
+async def assistant_analyze_monitor(request: Request):
+    user = _check_admin(request)
+    if not user or user.get('role') != 'admin':
+        return JSONResponse({'error': 'Forbidden'}, status_code=403)
+    if not _cert_csrf_ok(request):
+        return JSONResponse({'error': 'CSRF'}, status_code=403)
+    if not _monitor_ai_lock.acquire(blocking=False):
+        return JSONResponse({'error': 'Анализ уже выполняется'}, status_code=429)
+    global _monitor_ai_last
+    try:
+        now = time.monotonic()
+        if _monitor_ai_last and now - _monitor_ai_last < 60:
+            return JSONResponse({'error': 'Повторите анализ через минуту'}, status_code=429)
+        if not monitor_export.monitor_configured():
+            return JSONResponse({'error': 'Изолированный монитор не настроен'}, status_code=503)
+        report = await monitor_export.fetch_status()
+        if report is None:
+            return JSONResponse({'error': 'Монитор недоступен'}, status_code=503)
+        from monitor_ai import analyze
+        _monitor_ai_last = now
+        try:
+            result = await analyze(report, _assistant_resolve())
+        except (ValueError, RuntimeError) as exc:
+            return JSONResponse({'error': str(exc)}, status_code=503, headers={'Cache-Control': 'no-store'})
+        return JSONResponse({'analysis': result}, headers={'Cache-Control': 'no-store'})
+    finally:
+        _monitor_ai_lock.release()
+
+
 CERT_DOMAIN_LIMIT = 20
 _MIN_ASK_TOKEN_LENGTH = 32
 _CERT_ISSUE_CONCURRENCY = 2
@@ -9595,7 +9629,8 @@ def system_status_page(request: Request):
     user = _check_admin(request)
     if not user or user.get('role') != 'admin':
         return RedirectResponse('/login')
-    return tpl(request, 'system_status.html')
+    csrf = request.session.setdefault('backup_csrf', secrets.token_urlsafe(32))
+    return tpl(request, 'system_status.html', backup_csrf=csrf)
 
 
 @app.get('/settings', tags=["System Templates"])

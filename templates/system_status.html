@@ -60,15 +60,34 @@
         </section>
         <section class="status-card status-card--wide" aria-labelledby="analysis-title">
             <h2 id="analysis-title">Анализ ИИ</h2>
-            <p class="status-value">Не настроен</p>
-            <p class="status-note">Анализ не выполняется, данные модели не передаются. Заключения и автоматические действия на этой странице не предусмотрены.</p>
-            <a class="status-settings" href="/settings">Перейти к настройкам</a>
+            <p class="status-note">По кнопке обезличенные показатели монитора отправляются настроенному ИИ-провайдеру. Ключи, журналы и данные клиентов не передаются. ИИ может ошибаться и не выполняет действия.</p>
+            <button class="btn btn-primary" id="monitor-analyze" type="button">Проанализировать состояние</button>
+            <p id="monitor-analysis" class="status-note" role="status" aria-live="polite" style="white-space:pre-wrap"></p>
+            <a class="status-settings" href="/settings#settings-assistant">Настройки ИИ</a>
         </section>
     </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
+    document.getElementById('monitor-analyze')?.addEventListener('click', async function () {
+        const button = this;
+        const output = document.getElementById('monitor-analysis');
+        button.disabled = true;
+        output.textContent = 'Анализируем состояние…';
+        try {
+            const response = await fetch('/api/assistant/analyze', {
+                method: 'POST', credentials: 'same-origin', cache: 'no-store',
+                headers: {'X-Backup-CSRF': {{ backup_csrf | tojson }}}
+            });
+            const result = await response.json();
+            output.textContent = response.ok ? result.analysis : (result.error || 'Анализ недоступен');
+        } catch (_) {
+            output.textContent = 'Не удалось связаться с панелью';
+        } finally {
+            button.disabled = false;
+        }
+    });
     (async function () {
         const set = (id, value) => {
             const node = document.getElementById(id);
